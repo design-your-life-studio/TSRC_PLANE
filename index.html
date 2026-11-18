@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 手機開啟主控端：橫拿時把手機當成「高 720」的小螢幕排版再等比縮小（和電腦版比例一致）；直拿時提示轉成橫向 -->
+  <script>
+    (function () {
+      var isPhone = window.matchMedia && matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+      if (!isPhone) return;
+      var VIRTUAL_H = 720;
+      // 以畫面實際的寬高判斷橫／直（不受瀏覽器回報差異影響；改寫 viewport 後寬高比例仍與手機方向一致）
+      var isLandscape = function () { return innerWidth > innerHeight; };
+      var fit = function () {
+        var meta = document.querySelector('meta[name="viewport"]');
+        var long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+        var land = isLandscape();
+        var content = land
+          ? 'width=' + Math.round(VIRTUAL_H * long / short) + ', user-scalable=no'
+          : 'width=device-width, initial-scale=1, user-scalable=no';
+        if (meta && meta.getAttribute('content') !== content) meta.setAttribute('content', content);
+        document.documentElement.classList.add('phone-host');
+        document.documentElement.classList.toggle('phone-portrait', !land);
+      };
+      fit();
+      var t = 0;
+      var later = function () { clearTimeout(t); t = setTimeout(fit, 120); };
+      window.addEventListener('orientationchange', later);
+      window.addEventListener('resize', later);
+      if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', later);
+    })();
+  </script>
+  <title>雲端飆速賽 - 大螢幕主控端</title>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+
+  <!-- 設定 Firebase 的 Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
+        "firebase/database": "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js"
+      }
+    }
+  </script>
+
+  <style>
+    /* 標題字「雲端飆速賽」：Dela Gothic One，只下載這五個字 */
+    @import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&text=%E9%9B%B2%E7%AB%AF%E9%A3%86%E9%80%9F%E8%B3%BD&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=Anton&family=Bungee&family=Space+Mono:wght@400;700&family=Righteous&display=swap');
+    html, body { height: 100%; overflow: hidden; }
+    /* 不可選取文字、拖曳圖片；手機長按不跳出選單、點擊不出現灰色底色（輸入框除外）*/
+    html, body, #root { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+    input, textarea, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+    img, svg, canvas { -webkit-user-drag: none; user-drag: none; }
+    html, body { background: #f1f5f9; }   /* 手機瀏海兩側的留白也是雲朵白 */
+    /* 手機直拿：顯示「請將手機轉為橫向」 */
+    #rotate-tip { display: none; }
+    .phone-portrait #rotate-tip { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; text-align: center; padding: 30px; color: #1e3a8a;
+      background-color: #f1f5f9; background-image: conic-gradient(rgba(56,189,248,0.12) 25%, transparent 0 50%, rgba(56,189,248,0.12) 0 75%, transparent 0); background-size: 88px 88px; }
+    #rotate-tip .ph { width: 70px; height: 120px; border: 6px solid #1e3a8a; border-radius: 14px; }
+    #rotate-tip b { font-size: 24px; font-weight: 900; }
+    #rotate-tip span { color: #475569; font-weight: 700; font-size: 14px; line-height: 1.6; }
+    @media (prefers-reduced-motion: no-preference) { #rotate-tip .ph { animation: rotateTip 2.4s ease-in-out infinite; } }
+    @keyframes rotateTip { 0%, 25% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+    body { font-family: 'Noto Sans TC', sans-serif; }
+    .retro-title {
+      text-shadow: 4px 4px 0px #e11d48, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+    }
+    .retro-subtitle {
+      text-shadow: 3px 3px 0px #1d4ed8, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+    }
+    .bg-checkerboard {
+      background-image:
+        linear-gradient(45deg, #1f2937 25%, transparent 25%),
+        linear-gradient(-45deg, #1f2937 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1f2937 75%),
+        linear-gradient(-45deg, transparent 75%, #1f2937 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+    /* 背景：雲朵白＋淡藍格紋 */
+    .bg-grid {
+      background-color: #f1f5f9;
+      background-image: conic-gradient(rgba(56,189,248,0.12) 25%, transparent 0 50%, rgba(56,189,248,0.12) 0 75%, transparent 0);
+      background-size: 112px 112px;
+    }
+    /* ===== 標題字：簡單白色黑體 ===== */
+    .logo-plain { font-family: 'Dela Gothic One', 'Noto Sans TC', sans-serif; font-weight: 400; font-style: normal; color: #1e3a8a; letter-spacing: 0; line-height: 0.88; margin: 0.085em 0; display: block; width: fit-content; }
+    /* ===== 首頁字體系統：襯線粗黑標題 × 窄體英文 × 等寬資訊字 ===== */
+    .font-latin { font-family: 'Anton', 'Noto Sans TC', sans-serif; font-weight: 400; letter-spacing: 0.06em; }
+    .font-hud { font-family: 'Space Mono', ui-monospace, monospace; }
+    .font-winner { font-family: 'Bungee', 'Anton', sans-serif; font-weight: 400; letter-spacing: 0.02em; line-height: 1; }
+    .outline-num { font-family: 'Anton', sans-serif; color: transparent; -webkit-text-stroke: 2px rgba(30,58,138,0.12); line-height: 0.8; letter-spacing: 0.02em; }
+
+    /* ===== 首頁動態效果（系統開啟「減少動態效果」時全部停用）===== */
+    .hm-speed { display: none; position: absolute; top: 18%; left: -30%; width: 34%; height: 64%; pointer-events: none; }
+    .hm-speed i { position: absolute; left: 0; height: 9%; min-height: 2px; border-radius: 9px; background: rgba(255,255,255,.75); }
+    /* 航班看板（黃底黑字，取代 F1 起跑燈）：BOARDING → READY → 翻牌 TAKE OFF 起飛 */
+    .hm-board { display: grid; grid-template-columns: auto auto auto; gap: .2em .75em; align-items: center; padding: .45em .7em .55em; background: #facc15; border: 4px solid #000; box-shadow: 5px 5px 0 #000; border-radius: .35em;
+      font-family: 'Space Mono', ui-monospace, monospace; font-weight: 700; color: #000; font-size: .62em; line-height: 1.25; }
+    .hb-h { font-size: .55em; letter-spacing: .22em; color: rgba(0,0,0,.6); }
+    .hb-f { white-space: nowrap; }
+    .hb-f b { display: inline-block; background: #fff; border: 2px solid #000; border-radius: .12em; padding: 0 .2em; margin-right: .12em; font-weight: 700; }
+    .hb-st { display: inline-block; min-width: 9.6ch; text-align: center; background: #000; color: #facc15; padding: .12em .45em; border-radius: .15em; font-size: .75em; letter-spacing: .06em; transition: background .1s, color .1s; }
+    .hb-st.go { background: #e11d48; color: #fff; }
+    .hb-st.flip { animation: hbFlip .35s ease-out; }
+    @keyframes hbFlip { 0% { transform: perspective(200px) rotateX(90deg); } 100% { transform: perspective(200px) rotateX(0); } }
+    @media (prefers-reduced-motion: no-preference) {
+      /* 1. 進場動畫 */
+      .hm-intro .hm-season { animation: hmFade .5s ease-out both; }
+      .hm-intro .hm-bar { transform-origin: left center; animation: hmBar .45s cubic-bezier(.2,.8,.2,1) .1s both; }
+      .hm-intro .hm-tagtxt { animation: hmSlide .45s cubic-bezier(.2,.8,.2,1) .35s both; }
+      .hm-intro .hm-ch { animation: hmStamp .42s cubic-bezier(.2,1.6,.4,1) both; animation-delay: calc(.55s + var(--i) * .09s); }
+      .hm-intro .hm-eng { animation: hmSlide .5s cubic-bezier(.2,.8,.2,1) 1.1s both; }
+      .hm-intro .hm-car { animation: hmDriveIn 1.1s cubic-bezier(.15,.85,.25,1) .6s both; }
+      .hm-intro .hm-num { animation: hmFade .8s ease-out .9s both; }
+      .hm-intro .hm-track { animation: hmFade .5s ease-out 1.3s both; }
+      .hm-intro .hm-board-wrap { animation: hmFade .5s ease-out 1.5s both; }
+      .hm-intro .hm-pop { animation: hmPop .45s cubic-bezier(.2,1.6,.4,1) 1.4s both; }
+      /* 2. 持續動態：輪子、怠速、速度線、背景、虛線、按鈕呼吸 */
+      .hm-live .flame { transform-box: fill-box; transform-origin: right center; animation: flameFlick .12s steps(2) infinite alternate; }
+      .hm-live .hm-car svg { animation: hmIdle .14s steps(2) infinite alternate; }
+      .hm-live .hm-speed { display: block; }
+      .hm-live .hm-speed i { animation: hmStreak .6s linear infinite; }
+      .hm-live .hm-speed.sp-stripe i { animation: hmStripe .45s linear infinite; }
+      .hm-launch .hm-speed.sp-stripe i, .hm-car.race-out .hm-speed.sp-stripe i { animation-duration: .25s; }
+      .hm-live .track-dash { animation: hmDash .5s linear infinite; }
+      /* 比賽中行駛的車子：輪子轉動（比首頁快，有衝刺感）*/
+      .race-wheels .flame { transform-box: fill-box; transform-origin: right center; animation: flameFlick .09s steps(2) infinite alternate; }
+      .race-wheels svg { animation: hmIdle .14s steps(2) infinite alternate; }   /* 車身抖動（比照首頁）*/
+      .hm-live .hm-breath { animation: hmBreath 1.6s ease-in-out infinite; }
+      /* 3. 起跑燈循環：綠燈出發 → 從另一側開回來 */
+      .hm-car.race-out { animation: hmLaunch .75s cubic-bezier(.6,0,.9,.4) forwards !important; }
+      .hm-car.race-in { animation: hmDriveIn 1.3s cubic-bezier(.15,.85,.25,1) both !important; }
+      /* 4. 按下「開始遊戲」：賽車衝出畫面 */
+      .hm-launch .hm-car { animation: hmLaunch .55s cubic-bezier(.6,0,.9,.4) forwards !important; }
+      .hm-launch .hm-speed i, .hm-car.race-out .hm-speed i { animation-duration: .25s; }
+      /* 離場：文字往左滑出、其他元素淡出，下一頁緊接著進場 */
+      .hm-launch .hm-exit { opacity: 0; transform: translateX(-5vw); transition: opacity .36s ease-in, transform .36s ease-in; }
+      .hm-launch .hm-fadeout { opacity: 0; transition: opacity .3s ease-in; }
+      /* 換頁進場 */
+      .pg-enter > * { animation: pgRise .5s cubic-bezier(.2,.8,.2,1) backwards; }
+      .pg-enter > :nth-child(1) { animation-name: pgDrop; }
+      .pg-enter > :nth-child(2) { animation-delay: .08s; }
+      .pg-enter > :nth-child(3) { animation: hmPop .45s cubic-bezier(.2,1.6,.4,1) .3s backwards; }
+      .pg-enter [data-table] { animation: pgCell .28s ease-out backwards; animation-delay: calc(.2s + var(--c) * 22ms); }
+      .pg-rise { animation: pgRise .45s cubic-bezier(.2,.8,.2,1) backwards; }
+      .hz-pop { animation: hzPop 1.3s cubic-bezier(.2,1.5,.4,1) forwards; }
+      .hz-item { animation: hzFeed .35s cubic-bezier(.2,1.4,.4,1); }
+      .ice-block { animation: iceIn 1.5s ease-out forwards; }
+      .ice-text { animation: iceText .45s cubic-bezier(.2,1.6,.4,1); }
+      .car-frozen { animation: iceShiver .08s steps(2) infinite; }
+      .car-frozen .flame { animation-play-state: paused !important; }
+      /* 比賽畫面切換（大廳 ⇄ 倒數／比賽）：標題收合、賽道區撐高、整體縮放同步平滑過渡 */
+      .race-title { transition: grid-template-rows .6s cubic-bezier(.4,0,.2,1), opacity .35s ease; }
+      .race-title.is-hidden { transition: grid-template-rows .6s cubic-bezier(.4,0,.2,1), opacity .25s ease; }
+      .race-lanes { transition: min-height .6s cubic-bezier(.4,0,.2,1); }
+      .fit-smooth { transition: transform .6s cubic-bezier(.4,0,.2,1); }
+      /* 離開房間（結束本場 → 選桌）：比賽畫面與結算卡淡出縮小，選桌頁接著進場 */
+      .room-exit { opacity: 0; transform: scale(.96); transition: opacity .38s ease-in, transform .38s ease-in; }
+      /* 背景格紋：每一頁都持續往左流動 */
+      .bg-flow { animation: bgFlow 2.4s linear infinite; will-change: transform; }
+    }
+    /* 比賽中隱藏標題：用 grid 0fr 收合高度（不在 motion 區塊內，關閉動態時直接切換）*/
+    .race-title { display: grid; grid-template-rows: 1fr; }
+    .race-title > div { min-height: 0; overflow: hidden; }
+    .race-title.is-hidden { grid-template-rows: 0fr; opacity: 0; }
+    .room-exit { opacity: 0; pointer-events: none; }
+    /* 踩到障礙物：賽道上車頭彈出貼紙＋扣分（方案 E）*/
+    .hz-pop { position: absolute; top: -6px; z-index: 40; pointer-events: none; display: flex; align-items: center; gap: 2px; transform: translate(-50%, -26px); }
+    .hz-ico svg { width: 100%; height: 100%; display: block; }
+    .hz-pop b { font-family: 'Anton', sans-serif; font-size: 26px; line-height: 1; color: #e11d48; -webkit-text-stroke: 1.5px #000; paint-order: stroke fill; }
+    .hz-item .hz-ico svg { filter: none !important; }
+    /* 冰凍：把賽車的冰塊拉長成一整條，封住整條進度條 */
+    /* 亂流：紫色斜紋罩住整條航道，飛機上下晃動 */
+    .ice-block { position: absolute; inset: -6px; z-index: 35; pointer-events: none; border-radius: 999px;
+      background: repeating-linear-gradient(100deg, rgba(192,132,252,.25) 0 16px, rgba(192,132,252,.72) 16px 26px); border: 4px solid #581c87; box-shadow: 4px 4px 0 #000; }
+    .ice-text { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: 'Bungee', sans-serif; font-size: 26px; line-height: 1; color: #fff; -webkit-text-stroke: 2.5px #581c87; paint-order: stroke fill; white-space: nowrap; }
+    .car-frozen svg { animation: turbWobble .16s ease-in-out infinite alternate !important; }
+    @keyframes turbWobble { from { transform: translateY(-3px) rotate(-7deg); } to { transform: translateY(3px) rotate(6deg); } }
+    @keyframes pgRise { from { opacity: 0; transform: translateY(40px) scale(.97); } }
+    @keyframes hzPop { 0% { transform: translate(-50%, 6px) scale(.2); opacity: 0; } 18% { transform: translate(-50%, -30px) scale(1.15); opacity: 1; }
+      30% { transform: translate(-50%, -26px) scale(1) rotate(-6deg); } 40% { transform: translate(-50%, -26px) rotate(6deg); } 50% { transform: translate(-50%, -26px) rotate(0); }
+      80% { opacity: 1; } 100% { transform: translate(-50%, -40px); opacity: 0; } }
+    @keyframes iceIn { 0% { opacity: 0; transform: scale(1.06); } 10% { opacity: 1; transform: scale(1); } 82% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes iceText { from { transform: translate(-50%, -50%) scale(.3); } 60% { transform: translate(-50%, -50%) scale(1.15); } to { transform: translate(-50%, -50%) scale(1); } }
+    @keyframes iceShiver { to { margin-left: 3px; } }
+    .no-spin::-webkit-outer-spin-button, .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .no-spin { -moz-appearance: textfield; appearance: textfield; }
+    @keyframes shakePhone { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-16deg); } 40% { transform: rotate(14deg); } 60% { transform: rotate(-10deg); } 80% { transform: rotate(8deg); } }
+    .shake-phone { animation: shakePhone .7s ease-in-out infinite; transform-origin: 50% 80%; }
+    @keyframes hzFeed { from { transform: translateX(-24px); opacity: 0; } }
+    @keyframes pgDrop { from { opacity: 0; transform: translateY(-30px); } }
+    @keyframes pgCell { from { opacity: 0; transform: scale(.6); } }
+    @keyframes bgFlow { to { transform: translateX(-112px); } }
+    /* 背景格紋圖層：比畫面寬一格，往左移一格後無縫重複 */
+    .bg-flow { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% + 112px); pointer-events: none;
+      background-image: conic-gradient(rgba(56,189,248,0.12) 25%, transparent 0 50%, rgba(56,189,248,0.12) 0 75%, transparent 0);
+      background-size: 112px 112px; }
+    @keyframes hmFade { from { opacity: 0; } }
+    @keyframes hmBar { from { transform: scaleX(0); } }
+    @keyframes hmSlide { from { opacity: 0; transform: translateX(-40px); } }
+    @keyframes hmStamp { 0% { opacity: 0; transform: scale(2.2) rotate(-6deg); } 60% { opacity: 1; } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+    /* 進出場距離至少一整個螢幕寬：寬螢幕時賽車位置靠中間，只移 260% 車身會還留在畫面裡 */
+    @keyframes hmDriveIn { from { transform: translateX(min(-260%, -100vw)); } }
+    @keyframes hmPop { 0% { opacity: 0; transform: scale(.4); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes hmSpin { to { transform: rotate(360deg); } }
+    @keyframes flameFlick { from { transform: scaleX(1); } to { transform: scaleX(.55); } }   /* 噴射尾焰閃動 */
+    @keyframes hmIdle { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+    /* 速度感 04：黃、白、紅三條賽車線，從車尾往後拉長 */
+    .hm-speed.sp-stripe { top: 30%; left: -36%; width: 40%; height: 46%; }
+    .hm-speed.sp-stripe i { left: auto; right: 0; height: 22%; border-radius: 0 999px 999px 0; background: none; }
+    @keyframes hmStripe { 0% { width: 0; opacity: 1; } 70% { opacity: 1; } 100% { width: 100%; opacity: 0; } }
+    @keyframes hmStreak { 0% { transform: translateX(60%); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateX(-80%); opacity: 0; } }
+    @keyframes hmDash { to { background-position: -28px 0; } }
+    @keyframes hmBreath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+    @keyframes hmLaunch { 0% { transform: translateX(0); } 15% { transform: translateX(-4%); } 100% { transform: translateX(max(260%, 100vw)); } }
+    .track-dash { background-image: linear-gradient(90deg, rgba(30,58,138,0.45) 50%, transparent 50%); background-size: 28px 4px; background-repeat: repeat-x; height: 4px; }
+    .qr-box svg { width: 100%; height: 100%; display: block; }
+    @keyframes countPop { 0% { transform: scale(1.8); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(0.85); opacity: 0; } }
+    .count-pop { animation: countPop 1s ease-out forwards; }
+    .bulb-on-red { background: #ef4444; box-shadow: 0 0 10px 2px #ef4444; }
+    .bulb-on-yellow { background: #facc15; box-shadow: 0 0 10px 2px #facc15; }
+    .bulb-on-green { background: #22c55e; box-shadow: 0 0 10px 2px #22c55e; }
+    /* ===== S2 天空航道 ===== */
+    .sky-field { background: linear-gradient(#0ea5e9, #38bdf8 55%, #a5e3fd); }
+    .sky-clouds { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+    .sky-gate { position: absolute; top: 12px; bottom: 12px; right: 16px; width: 52px; z-index: 0; border: 4px solid #000; border-radius: 10px; background-color: #fff;
+      background-image: linear-gradient(45deg, #000 25%, transparent 25%), linear-gradient(-45deg, #000 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #000 75%), linear-gradient(-45deg, transparent 75%, #000 75%);
+      background-size: 18px 18px; background-position: 0 0, 0 9px, 9px -9px, -9px 0; }
+    .sky-lane { background: rgba(255,255,255,.28); border: 3px dashed rgba(255,255,255,.85); border-radius: 999px; }
+    .sky-trail { position: absolute; left: 0; top: 50%; height: 20px; transform: translateY(-50%); border-radius: 999px; border: 3px solid #000; }
+    .sky-score { z-index: 31; background: #fff; border: 3px solid #000; border-radius: 8px; padding: 0 8px; box-shadow: 2px 2px 0 #000; line-height: 1.35; }
+  </style>
+</head>
+<body>
+  <script>
+    // 防止拖曳圖片／文字（輸入框除外）
+    document.addEventListener('dragstart', function (e) { if (!(e.target.closest && e.target.closest('input, textarea'))) e.preventDefault(); });
+  </script>
+  <div id="rotate-tip" data-testid="rotate-tip"><div class="ph"></div><b>請將手機轉為橫向</b><span>主控端畫面為橫式設計<br>轉成橫向後會自動顯示</span></div>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import { initializeApp } from 'firebase/app';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+    import { getDatabase, ref, get, set, update, onValue, runTransaction, onDisconnect, serverTimestamp } from 'firebase/database';
+
+    const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
+
+    // ================= 遊戲設定 =================
+    const TOTAL_TABLES = 60;     // 桌號 01～60
+    const MAX_TEAMS = 10;        // 每場最多參賽組數
+    const MIN_TEAMS = 2;         // 每場最少參賽組數
+    const RACED_STORAGE_KEY = 'tsrc_plane_raced_tables'; // 本機瀏覽器記錄：已比過賽的桌號
+    const HISTORY_STORAGE_KEY = 'tsrc_plane_race_history'; // 本機瀏覽器記錄：已完成比賽的成績
+    const TARGET_SCORE = 500;    // 預設目標分數：任一組先到此分數，比賽立即結束（可在「遊戲設定」更改）
+    const RACE_DURATION = 30;    // 預設比賽秒數（可在「遊戲設定」更改）
+    const TARGET_OPTIONS = [300, 500, 800, 1000];
+    const DURATION_OPTIONS = [20, 30, 45, 60];
+    // 每個房間建立時記錄當時的設定；舊房間沒有記錄就用預設值
+    const roomTarget = (meta) => Number(meta?.target) || TARGET_SCORE;
+    const roomDuration = (meta) => Number(meta?.duration) || RACE_DURATION;
+    const SETTINGS_STORAGE_KEY = 'tsrc_plane_game_settings';
+    // 遊玩模式：tap = 眼明手快（點擊泡泡）；shake = 搖搖衝刺（搖晃手機，每搖一下 +10）
+    const MODE_OPTIONS = [
+      { id: 'tap', name: '眼明手快', desc: '點擊泡泡累積積分' },
+      { id: 'shake', name: '搖搖衝刺', desc: '搖晃手機，每搖一下 +10' },
+    ];
+    const MODE_IDS = MODE_OPTIONS.map(m => m.id);
+    const roomMode = (meta) => (meta && meta.mode === 'shake') ? 'shake' : 'tap';
+    const modeName = (mode) => (MODE_OPTIONS.find(m => m.id === mode) || MODE_OPTIONS[0]).name;
+    // 自定義的可輸入範圍（與資料庫規則一致：目標 100–5000 分、秒數 10–300 秒）
+    const TARGET_RANGE = [100, 5000];
+    const DURATION_RANGE = [10, 300];
+    const inRange = (v, [lo, hi]) => Number.isInteger(v) && v >= lo && v <= hi;
+    const loadSettings = () => {
+      try { const v = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}');
+        return { mode: MODE_IDS.includes(v.mode) ? v.mode : 'tap', target: inRange(v.target, TARGET_RANGE) ? v.target : TARGET_SCORE, duration: inRange(v.duration, DURATION_RANGE) ? v.duration : RACE_DURATION }; }
+      catch (e) { return { mode: 'tap', target: TARGET_SCORE, duration: RACE_DURATION }; }
+    };
+    const COUNTDOWN_MS = 3000;   // 3、2、1 倒數；之後顯示 GO 並正式開賽
+    const FINISH_GRACE_MS = 1200;  // 時間到後，等手機最後一次回傳分數的緩衝
+    const TEAM_SCORE_SYNC_MS = 250; // 主控端把各組總分同步給手機的頻率
+    const HOST_STORAGE_KEY = 'tsrc_plane_host_room';
+    const SPLASH_MS = 3000;      // 開場畫面停留時間
+    const SPLASH_FADE_MS = 700;  // 開場畫面淡出時間
+
+    // 賽車可選顏色（手機端與主控端必須一致）
+    const CAR_COLORS = [
+      { id: 'red',     hex: '#e11d48', name: '飛行紅' },
+      { id: 'orange',  hex: '#ff6a00', name: '螢光橘' },
+      { id: 'gold',    hex: '#c7a017', name: '金沙' },
+      { id: 'yellow',  hex: '#ffe500', name: '螢光黃' },
+      { id: 'lime',    hex: '#a6ff00', name: '螢光綠' },
+      { id: 'green',   hex: '#00b050', name: '翡翠綠' },
+      { id: 'mint',    hex: '#3dffc5', name: '螢光薄荷' },
+      { id: 'teal',    hex: '#00a39a', name: '湖水綠' },
+      { id: 'blue',    hex: '#1f5bff', name: '極速藍' },
+      { id: 'purple',  hex: '#b000ff', name: '螢光紫' },
+      { id: 'pink',    hex: '#ff3ea5', name: '螢光粉' },
+      { id: 'sakura',  hex: '#ffa8d6', name: '櫻花粉' },
+      { id: 'maroon',  hex: '#7a1030', name: '酒紅' },
+      { id: 'brown',   hex: '#7c3f12', name: '咖啡棕' },
+      { id: 'silver',  hex: '#b8c2cc', name: '銀河灰' },
+      { id: 'black',   hex: '#1f2328', name: '碳纖黑' },
+    ];
+
+    // ================= Firebase =================
+    const firebaseConfig = {
+      apiKey: "AIzaSyClm6I6jzdk8BcQnGBjB-2M3zfHJQ9VQmg",
+      authDomain: "tsrc-plane.firebaseapp.com",
+      // 注意：databaseURL 依 Firebase 預設命名填入（新加坡 asia-southeast1）；若與 Realtime Database 頁面上方的網址不同，請改成實際網址
+      databaseURL: "https://tsrc-plane-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "tsrc-plane",
+      storageBucket: "tsrc-plane.firebasestorage.app",
+      messagingSenderId: "371286745198",
+      appId: "1:371286745198:web:bf6177f436add43984867f",
+      measurementId: "G-T65WC0XXFK"
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    // ================= 工具 =================
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const teamKey = (t) => `t${t}`;   // 用 t07 這種鍵，避免 RTDB 把數字鍵轉成陣列
+    const colorHex = (id) => (CAR_COLORS.find(c => c.id === id) || CAR_COLORS[8]).hex;
+    const store = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} },
+    };
+    // 已比過賽的桌號（存在這台電腦的瀏覽器）
+    const loadRaced = () => {
+      try { const v = JSON.parse(localStorage.getItem(RACED_STORAGE_KEY) || '[]'); return Array.isArray(v) ? v.filter(n => Number.isInteger(n)) : []; }
+      catch (e) { return []; }
+    };
+    const saveRaced = (list) => store.set(RACED_STORAGE_KEY, JSON.stringify([...new Set(list)].sort((a, b) => a - b)));
+    // 成績紀錄：每場比賽結束時存一筆（含各組總分與每位成員的貢獻分數）
+    const loadHistory = () => {
+      try { const v = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+      catch (e) { return []; }
+    };
+    const saveHistory = (list) => store.set(HISTORY_STORAGE_KEY, JSON.stringify(list.slice(-300)));
+    const buildRecord = (room, code) => {
+      const ranking = Array.isArray(room.result?.ranking) ? room.result.ranking : Object.values(room.result?.ranking || {});
+      return {
+        id: `${code}-${room.meta.countdownAt}`,
+        room: code,
+        finishedAt: Number(room.meta.finishedAt) || Date.now(),
+        reason: room.meta.endReason,
+        target: roomTarget(room.meta), duration: roomDuration(room.meta), mode: roomMode(room.meta),
+        teams: ranking.map(r => {
+          const key = teamKey(r.table);
+          const leader = room.teams?.[key]?.leaderUid;
+          // 只記錄真的有參賽的人：比賽結束時在線，或比賽中有回傳過分數（已離線、只是殘留在名單上的不算）
+          const players = Object.entries(room.players?.[key] || {}).filter(([id, p]) => p?.online || room.scores?.[key]?.[id]).map(([id, p]) => ({
+            name: p?.name || '未命名機師',
+            score: Number(room.scores?.[key]?.[id]?.s) || 0,
+            leader: id === leader,
+          })).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+          return { table: r.table, rank: r.rank, score: r.score, color: room.teams?.[key]?.color || 'blue', players };
+        }),
+      };
+    };
+
+    // 燈號：紅＝無人、黃＝有人未全員準備、綠＝在線玩家全部準備
+    const teamStatus = (room, t) => {
+      const players = Object.values(room?.players?.[teamKey(t)] || {}).filter(p => p && p.online);
+      if (!players.length) return { light: 'red', count: 0, ready: 0 };
+      const ready = players.filter(p => p.ready).length;
+      return { light: ready === players.length ? 'green' : 'yellow', count: players.length, ready };
+    };
+    // 隊長判定（與手機端相同邏輯）
+    const resolveLeader = (members, currentUid) => {
+      const online = Object.entries(members || {}).filter(([, p]) => p && p.online);
+      if (currentUid && online.some(([id]) => id === currentUid)) return currentUid;
+      online.sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0) || (a[0] < b[0] ? -1 : 1));
+      return online.length ? online[0][0] : null;
+    };
+    // 各組總分 = 組內每位玩家分數加總（玩家只能寫自己的分數）
+    const teamSums = (room) => {
+      const sums = {};
+      (room?.tables || []).forEach(t => {
+        sums[t] = Object.values(room?.scores?.[teamKey(t)] || {}).reduce((a, p) => a + (Number(p?.s) || 0), 0);
+      });
+      return sums;
+    };
+    // 排名：分數高者在前；同分同名次，桌號小的排前面
+    const rankTeams = (tables, sums) => {
+      const list = [...tables].map(t => ({ table: t, score: sums[t] || 0 })).sort((a, b) => b.score - a.score || a.table - b.table);
+      list.forEach((r, i) => { r.rank = i > 0 && r.score === list[i - 1].score ? list[i - 1].rank : i + 1; });
+      return list;
+    };
+    const raceWindow = (meta) => {
+      if (!meta?.countdownAt) return null;
+      const start = meta.countdownAt + COUNTDOWN_MS;
+      return { countdownAt: meta.countdownAt, start, end: start + roomDuration(meta) * 1000 };
+    };
+    // 障礙物圖示（與手機端相同）：大螢幕顯示「哪一隊踩到了什麼」
+    const HAZ_SVG = (inner) => `<svg viewBox="0 0 64 64" width="88" height="88" style="overflow:visible;filter:drop-shadow(3px 3px 0 #000)"><g stroke="#000" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">${inner}</g></svg>`;
+    // 熱氣球（-10）
+    const BANANA_SVG = HAZ_SVG(`
+      <path d="M32,4 C16,4 8,16 10,28 C12,38 22,44 26,48 L38,48 C42,44 52,38 54,28 C56,16 48,4 32,4 Z" fill="#e11d48"/>
+      <path d="M32,4 C25,10 23,30 27,48 L37,48 C41,30 39,10 32,4 Z" fill="#facc15"/>
+      <path d="M17,16 C16,20 16,24 17,27" fill="none" stroke="#fff" stroke-width="2.6"/>
+      <path d="M26,48 L27,53 M38,48 L37,53" stroke-width="2"/>
+      <rect x="25" y="53" width="14" height="9" rx="1.5" fill="#a16207"/>`);
+    // 閃電（-20）
+    const CONE_SVG = HAZ_SVG(`
+      <path d="M38,2 L14,36 L29,36 L22,62 L52,24 L36,24 L46,2 Z" fill="#facc15"/>
+      <path d="M37,8 L22,30" stroke="#fff" stroke-width="2.6" fill="none"/>`);
+    // 亂流（暈 1 秒）
+    const ICE_SVG = HAZ_SVG(`
+      <circle cx="32" cy="32" r="27" fill="#c084fc"/>
+      <path d="M32,32 C32,28 38,28 38,33 C38,39 29,40 27,33 C25,25 36,21 42,26 C49,32 45,45 34,46 C22,47 15,37 18,27 C21,17 33,12 43,15" fill="none" stroke="#fff" stroke-width="3.6"/>
+      <path d="M32,32 C32,28 38,28 38,33 C38,39 29,40 27,33 C25,25 36,21 42,26 C49,32 45,45 34,46 C22,47 15,37 18,27 C21,17 33,12 43,15" fill="none" stroke="#581c87" stroke-width="1.4"/>`);
+    const HAZARD_INFO = { banana: { name: '熱氣球', pts: -10, svg: BANANA_SVG }, cone: { name: '閃電', pts: -20, svg: CONE_SVG }, ice: { name: '亂流', pts: 0, svg: ICE_SVG } };
+    const ICE_FX_MS = 1500;   // 大螢幕賽道冰凍特效時間（手機凍住 1 秒，大螢幕稍長讓觀眾看得到）
+    const SCORE_RENDER_MS = 250;   // 大螢幕分數重繪節流：每 250ms 最多更新一次畫面
+    const HAZ_FX_MS = 1300;   // 賽道上貼紙彈出的時間
+    const HAZ_FEED_MAX = 5;   // 左側障礙物紀錄最多顯示幾筆
+    const HAZ_FEED_H = 28 + 5 * 32 + 5 * 6;   // 標題 28px＋5 筆（每筆 32px、間距 6px）的固定高度
+    const endReasonText = (reason, target = TARGET_SCORE, duration = RACE_DURATION) =>
+      ({ target: `率先達到 ${target} 分`, timeout: `${duration} 秒時間到`, aborted: '工作人員緊急中止' })[reason] || '';
+
+    const playerUrl = (code) => {
+      // 手機頁放在 mobile/ 資料夾（mobile/index.html），網址為 .../mobile/?room=房號
+      const u = new URL('mobile/', location.href);
+      u.search = `?room=${code}`;
+      return u.toString();
+    };
+
+    // 把 Firebase 錯誤轉成看得懂的說明（方便現場排除問題）
+    const errText = (err) => {
+      const code = String(err?.code || err?.message || err || '');
+      if (/PERMISSION_DENIED|permission/i.test(code)) return '資料庫規則拒絕（請確認 Firebase 規則已更新為最新版）';
+      if (/network|offline|unavailable|disconnected/i.test(code)) return '網路連線中斷，請檢查網路';
+      return code || '未知錯誤';
+    };
+
+    // ================= UI 元件 =================
+    // 飛機外框（白色描邊與斜下方黑影用）：與機身同形狀的剪影，不含會閃動的尾焰
+    const CAR_SILHOUETTE = (
+      <>
+        <path d="M14,19 L86,17 C100,18 112,22 117,25 C112,28 100,31 86,31 L14,31 Z" /><path d="M14,20 L8,3 L20,3 L36,19 Z" />
+        <path d="M40,26 L74,26 L56,40 L34,40 Z" /><path d="M8,28 L28,28 L20,35 L6,35 Z" />
+        <path d="M64,18 C68,9 86,9 92,18 Z" /><path d="M14,20 L0,25 L14,30 Z" />
+      </>
+    );
+    // 噴射戰機（機頭朝右）：機身＝隊長選的顏色；outline：加白色描邊＋斜下方黑影（貼紙風格），用在首頁與手機選色預覽；比賽航道上不加
+    const F1CarSVG = ({ color = '#3b82f6', outline = false }) => (
+      <svg viewBox="0 0 120 45" className={`w-full h-full ${outline ? '' : 'drop-shadow-md'}`} style={{ overflow: 'visible' }}>
+        {outline && (
+          <g strokeLinejoin="round" strokeLinecap="round">
+            {/* 直接畫在 SVG 裡（不用 CSS 濾鏡），動畫不會變慢 */}
+            <g transform="translate(2.4 2.8)" fill="#000" stroke="#000" strokeWidth="4.4" opacity="0.45">{CAR_SILHOUETTE}</g>
+            <g fill="#fff" stroke="#fff" strokeWidth="4.4">{CAR_SILHOUETTE}</g>
+          </g>
+        )}
+        <g stroke="#000" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round">
+          {/* 尾焰（首頁與飛行中會閃動）*/}
+          <g className="flame"><path d="M14,19.5 L-4,25 L14,30.5 Z" fill="#f97316" /><path d="M14,22 L3,25 L14,28 Z" fill="#facc15" strokeWidth="1" /></g>
+          <path d="M14,20 L8,3 L20,3 L36,19 Z" fill="#e11d48" />
+          <path d="M14,19 L86,17 C100,18 112,22 117,25 C112,28 100,31 86,31 L14,31 Z" fill={color} />
+          <path d="M64,18 C68,9 86,9 92,18 Z" fill="#bae6fd" />
+          <path d="M71,12.5 L76,11.5" stroke="#fff" strokeWidth="2" />
+          <path d="M24,23 L60,22 L60,26 L24,27 Z" fill="#22c55e" />
+          <path d="M8,28 L28,28 L20,35 L6,35 Z" fill="#1e3a8a" />
+          <path d="M40,26 L74,26 L56,40 L34,40 Z" fill="#1e3a8a" />
+          <path d="M104,21.5 L117,25 L104,28.5 Z" fill="#e11d48" />
+          <rect x="11" y="19" width="5" height="12" fill="#1f2937" />
+        </g>
+      </svg>
+    );
+
+    // 航道背景雲朵（底部雲海＋上方小雲）
+    const SkyClouds = () => (
+      <svg className="sky-clouds" viewBox="0 0 500 300" preserveAspectRatio="none" aria-hidden="true"><g transform="translate(20 240) scale(1.8)" opacity="0.9"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g><g transform="translate(130 250) scale(2)" opacity="0.95"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g><g transform="translate(260 236) scale(1.9)" opacity="0.9"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g><g transform="translate(390 248) scale(2)" opacity="0.95"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g><g transform="translate(120 30) scale(0.9)" opacity="0.6"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g><g transform="translate(330 70) scale(1.1)" opacity="0.55"><path d="M10,40 C0,40 0,24 12,24 C12,10 32,6 38,18 C44,8 64,10 64,24 C78,22 80,40 68,40 Z" fill="#fff" /></g></svg>
+    );
+
+    // 冠軍獎盃（簡化版：紅色杯身＋白星，黑色底座）
+    const TrophyIcon = ({ size = 110 }) => (
+      <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
+        <g stroke="#000" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round">
+          <path d="M16 15 H10 C10 23 13 27 18 28" fill="none" />
+          <path d="M48 15 H54 C54 23 51 27 46 28" fill="none" />
+          <path d="M16 10 H48 V22 C48 32 41 38 32 38 C23 38 16 32 16 22 Z" fill="#e11d48" />
+          <rect x="29" y="38" width="6" height="8" fill="#000" />
+          <rect x="20" y="46" width="24" height="8" rx="2" fill="#000" />
+        </g>
+        <polygon points="32,15 34.1,20.4 39.8,20.6 35.3,24.1 36.9,29.6 32,26.4 27.1,29.6 28.7,24.1 24.2,20.6 29.9,20.4" fill="#fff" />
+      </svg>
+    );
+
+    const TrafficLight = ({ light }) => (
+      <div className="flex gap-1 bg-black border-2 border-black rounded-full px-1.5 py-1 shrink-0" title={light}>
+        {['red', 'yellow', 'green'].map(c => (
+          <div key={c} className={`w-4 h-4 rounded-full border border-black ${light === c ? `bulb-on-${c}` : 'bg-gray-600'}`}></div>
+        ))}
+      </div>
+    );
+
+    const QRCodeBox = ({ text }) => {
+      const svg = useMemo(() => {
+        if (typeof qrcode === 'undefined') return '';
+        const q = qrcode(0, 'M');
+        q.addData(text);
+        q.make();
+        return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+      }, [text]);
+      return <div data-qr={text} className="qr-box bg-white border-4 border-black p-1 shadow-[6px_6px_0px_#000] w-56 h-56" dangerouslySetInnerHTML={{ __html: svg }} />;
+    };
+
+    // 需要按兩次才會執行的按鈕（避免誤觸，也不使用瀏覽器跳窗）
+    const ConfirmButton = ({ onConfirm, children, confirmText, className, title, armedClass = BTN_ARMED_DANGER }) => {
+      const [armed, setArmed] = useState(false);
+      useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 3000); return () => clearTimeout(t); }, [armed]);
+      return (
+        <button title={title} onClick={() => (armed ? (setArmed(false), onConfirm()) : setArmed(true))} className={`${className} ${armed ? armedClass : ''}`}>
+          {armed ? confirmText : children}
+        </button>
+      );
+    };
+
+    const RetroWindow = ({ title, right, children, className = '' }) => (
+      <div className={`w-full bg-white border-4 border-black rounded-xl shadow-[12px_12px_0px_#000] overflow-hidden z-10 flex flex-col ${className}`}>
+        <div className="bg-[#f1f5f9] border-b-4 border-black p-3 flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="flex gap-2">
+              <div className="w-5 h-5 rounded-full bg-[#e11d48] border-2 border-black"></div>
+              <div className="w-5 h-5 rounded-full bg-[#facc15] border-2 border-black"></div>
+              <div className="w-5 h-5 rounded-full bg-[#22c55e] border-2 border-black"></div>
+            </div>
+            <span className="font-black text-black text-xl tracking-wider uppercase font-['Righteous']">{title}</span>
+          </div>
+          {right}
+        </div>
+        {children}
+      </div>
+    );
+
+    // 標題字元件：簡單白色黑體，無任何特效
+    const LogoText = ({ children }) => <span className="logo-plain">{children}</span>;
+
+    // 畫面自動縮放：內容依固定設計寬度排版，再等比縮放到剛好放進視窗（電腦端永遠不需要捲動）
+    // 超寬螢幕（例如 3520×768 LED 牆）：寬高比 ≥ 2.4 時自動改用寬版版面
+    // （賽道拉滿全寬；大廳的按鈕、比賽中的障礙物紀錄移到右側欄）
+    // 測試用：網址加 ?wide=on 強制寬版、?wide=off 強制一般版面
+    const WIDE_RATIO = 2.4;
+    // 寬螢幕首頁：標題與賽車往中間靠攏，主視覺最寬只到這個寬度（依畫面高度換算），兩側留白
+    const HOME_WIDE_MAX = '210vh';
+    const useWideMode = () => {
+      const force = new URLSearchParams(location.search).get('wide');
+      const calc = () => force === 'off' ? '' : force === 'on' ? 'b' : (innerWidth / innerHeight >= WIDE_RATIO ? 'b' : '');
+      const [m, setM] = useState(calc);
+      useEffect(() => { const f = () => setM(calc()); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+      return m;
+    };
+    const FitStage = ({ width, fill = false, className = '', smooth = false, children }) => {
+      const outer = useRef(null);
+      const inner = useRef(null);
+      const [scale, setScale] = useState(1);
+      // fill：超寬螢幕時，設計寬度跟著螢幕比例拉寬（內容高度不變），左右不再留白
+      const [w, setW] = useState(width);
+      useLayoutEffect(() => { if (!fill) setW(width); }, [fill, width]);
+      // smooth：版面高度改變時縮放比例平滑過渡（首次定位不做動畫，避免進場時縮放跳動）
+      const [settled, setSettled] = useState(false);
+      useEffect(() => { const t = setTimeout(() => setSettled(true), 80); return () => clearTimeout(t); }, []);
+      useLayoutEffect(() => {
+        const fit = () => {
+          const o = outer.current, i = inner.current;
+          if (!o || !i || !i.offsetWidth || !i.offsetHeight) return;
+          if (fill) {
+            const want = Math.max(width, Math.round((o.clientWidth - 48) / (o.clientHeight - 48) * i.offsetHeight));
+            if (Math.abs(want - i.offsetWidth) > 2) { setW(want); return; }
+          }
+          const s = Math.min(1.35, (o.clientWidth - 48) / i.offsetWidth, (o.clientHeight - 48) / i.offsetHeight);
+          setScale(s > 0 ? s : 1);
+        };
+        fit();
+        const ro = new ResizeObserver(fit);
+        ro.observe(outer.current); ro.observe(inner.current);
+        window.addEventListener('resize', fit);
+        return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+      }, [fill, width]);
+      return (
+        <div ref={outer} className="absolute inset-0 flex items-center justify-center overflow-hidden">
+          <div ref={inner} className={`flex flex-col items-center shrink-0 ${smooth && settled ? 'fit-smooth' : ''} ${className}`} style={{ width: fill ? w : width, transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+            {children}
+          </div>
+        </div>
+      );
+    };
+
+    // 讓英文副標的寬度剛好等於指定元素（例如「方程式」三個字）的寬度
+
+    // ===== 首頁動態效果 =====
+    const prefersReducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const LAUNCH_MS = 520;
+    const ROOM_EXIT_MS = 380;   // 離開房間回選桌：比賽畫面淡出的時間
+    const RACE_LANES_MIN_H = 10 * 40 + 9 * 14;   // 十條賽道（每條 40px、間距 14px）的高度   // 按下「開始遊戲」後，賽車衝出、首頁離場的時間（之後下一頁接著進場）
+    // 背景格紋流動：所有圖層用同一個節奏（依目前時間對齊），疊在一起或換頁時都不會錯位
+    const BG_FLOW_MS = 2400;
+    const BgFlow = ({ className = '', style }) => {
+      const [delay] = useState(() => -(performance.now() % BG_FLOW_MS));
+      // 外層裁切：格紋圖層比畫面寬一格，包起來避免父層出現可捲動的多餘寬度（畫面被推歪）
+      return (
+        <div aria-hidden="true" className="absolute inset-0 overflow-hidden pointer-events-none" style={style}>
+          <div className={`bg-flow ${className}`} style={{ animationDelay: `${delay}ms` }}></div>
+        </div>
+      );
+    };
+    // 標題逐字彈入：每個字一個 span，--i 決定出場順序
+    const IntroChars = ({ text, from = 0 }) => [...text].map((c, i) => (
+      <span key={i} className="hm-ch inline-block" style={{ '--i': from + i }}>{c}</span>
+    ));
+
+    const FitWidthText = ({ targetRef, className = '', children }) => {
+      const ref = useRef(null);
+      const [size, setSize] = useState(null);
+      useLayoutEffect(() => {
+        let raf = 0;
+        const fit = () => {
+          const t = targetRef.current, el = ref.current;
+          if (!t || !el || !t.offsetWidth) return;
+          const prev = el.style.fontSize;
+          el.style.fontSize = '100px';
+          const natural = el.scrollWidth;
+          el.style.fontSize = prev;
+          if (natural) setSize(100 * t.offsetWidth / natural);
+        };
+        const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(fit); };
+        fit();
+        if (document.fonts) document.fonts.ready.then(schedule);
+        const ro = new ResizeObserver(schedule);
+        if (targetRef.current) ro.observe(targetRef.current);
+        window.addEventListener('resize', schedule);
+        return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('resize', schedule); };
+      }, []);
+      return <div ref={ref} className={`inline-block whitespace-nowrap leading-none ${className}`} style={{ fontSize: size ? `${size}px` : '1em', visibility: size ? 'visible' : 'hidden' }}>{children}</div>;
+    };
+
+    // 選桌／房間畫面上方標題：副標貼近標題、標題與下方視窗稍微靠近（間距方案 03）
+    // 黃線＋標語：整體寬度與「綠能方程式」相同
+    const TitleBlock = ({ big }) => {
+      const titleRef = useRef(null);
+      return (
+        <div className="text-center mb-[22px] z-10 flex flex-col items-center">
+          <FitWidthText targetRef={titleRef} className="mb-[6px]">
+            <span className="inline-flex items-center gap-[0.6em] text-[#1e3a8a]">
+              <span className="inline-block h-[0.1em] min-h-[3px] w-[3em] bg-[#e11d48]"></span>
+              <span className="inline-block font-medium tracking-[0.2em]">解鎖 2027 冠軍航<span className="tracking-normal">道</span></span>
+            </span>
+          </FitWidthText>
+          {/* 標題字本身上方有 0.085em 留白，這裡往上收 0.125em，實際為 -0.04em */}
+          <h1 className={big ? 'text-[128px]' : 'text-[72px]'} style={{ marginTop: '-0.125em' }}><LogoText><span ref={titleRef} className="inline-block">雲端飆速賽</span></LogoText></h1>
+        </div>
+      );
+    };
+
+    /* ================= 按鈕 UI 規範 v1（新增按鈕一律從這裡選樣式）=================
+       顏色意義對應紅綠燈：
+         前進黃 #FACC15 ＝ 主要動作（開始、建立、加入、確認），膠囊形，每個畫面最多 1 個 → bigBtn
+         中性白          ＝ 一般操作（返回、清除選取、查看、關閉），方角               → ghostBtn
+         警示紅 #E11D48 ＝ 危險動作（取消、中止、結束、清除），方角紅字，一律按兩次  → dangerBtn + ConfirmButton
+         選取黃 #FACC15 ＝ 已選取的項目（桌號、場次、顏色），不當按鈕底色             → SEL_ON / SEL_HOVER
+         停用灰 #9CA3AF ＝ 條件未達成，文字要說明原因
+       共通：黑色 4px 外框＋黑色實心陰影；按下時往下沉、陰影消失；滑鼠移上去顏色略變。 */
+    const BTN_DISABLED = 'bg-gray-400 text-gray-700 cursor-not-allowed shadow-[0px_0px_0px_#000] translate-y-[6px]';
+    const BTN_ARMED_DANGER = '!bg-[#e11d48] !text-white';     // 危險按鈕按第一下
+    const BTN_ARMED_NEUTRAL = '!bg-[#facc15] !text-black';    // 一般按鈕需二次確認時按第一下
+    const SEL_ON = 'bg-[#facc15] text-black';                  // 選取中
+    const SEL_HOVER = 'hover:bg-[#fef9c3]';                    // 未選取的滑鼠移上
+    const bigBtn = (enabled) => `px-10 py-4 rounded-full border-4 border-black font-black text-2xl tracking-widest flex items-center gap-4 transition-all ${enabled ? 'bg-[#facc15] text-black shadow-[6px_6px_0px_#000] hover:bg-[#eab308] active:shadow-[0px_0px_0px_#000] active:translate-y-[6px]' : BTN_DISABLED}`;
+    const ghostBtn = 'px-6 py-3 bg-white text-black border-4 border-black font-black text-lg shadow-[4px_4px_0px_#000] hover:bg-[#fef9c3] active:translate-y-[4px] active:shadow-none transition-all';
+    const dangerBtn = 'px-6 py-3 bg-white text-[#e11d48] border-4 border-black font-black text-lg shadow-[4px_4px_0px_#000] hover:bg-[#ffe4e6] active:translate-y-[4px] active:shadow-none transition-all';
+
+    // 成績紀錄視窗：總排行 + 各場成績，點組別可展開每位成員的貢獻分數
+    // 匯入的成績紀錄檔：只收格式正確的場次
+    const validRecord = (r) => r && typeof r.id === 'string' && Number.isFinite(Number(r.finishedAt)) && Array.isArray(r.teams)
+      && r.teams.every(t => t && Number.isFinite(Number(t.table)) && Number.isFinite(Number(t.score)) && Array.isArray(t.players || []));
+    const ScoreHistory = ({ history, onClose, onClear, onRestore }) => {
+      const [sel, setSel] = useState('all');
+      const [notice, setNotice] = useState(null);   // { ok, text } 匯出／還原結果
+      const fileRef = useRef(null);
+      useEffect(() => { if (!notice) return; const id = setTimeout(() => setNotice(null), 5000); return () => clearTimeout(id); }, [notice]);
+      // 匯出：下載成 JSON 檔，之後可用「還原成績紀錄」匯回（換電腦、清除瀏覽器資料前先備份）
+      const exportHistory = () => {
+        const d = new Date(), p2 = (n) => String(n).padStart(2, '0');
+        const name = `雲端飆速賽_成績紀錄_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+        const blob = new Blob([JSON.stringify({ app: 'tsrc-plane', version: 1, exportedAt: d.getTime(), records: history }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        setNotice({ ok: true, text: `已匯出 ${history.length} 場成績` });
+      };
+      // 還原：讀取匯出的 JSON 檔，與目前紀錄合併（同一場不會重複）
+      const restoreFile = (e) => {
+        const file = e.target.files?.[0]; e.target.value = '';
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            const list = Array.isArray(data) ? data : data?.records;
+            if (!Array.isArray(list)) throw new Error('format');
+            const recs = list.filter(validRecord);
+            if (!recs.length) throw new Error('empty');
+            const added = onRestore(recs);
+            setSel('all'); setOpenRow(null);
+            setNotice({ ok: true, text: added ? `已還原 ${added} 場成績${recs.length > added ? `（${recs.length - added} 場原本就有）` : ''}` : '檔案裡的場次都已經在紀錄中' });
+          } catch (err) { setNotice({ ok: false, text: '還原失敗：請選擇「匯出成績紀錄」產生的檔案' }); }
+        };
+        reader.onerror = () => setNotice({ ok: false, text: '還原失敗：無法讀取檔案' });
+        reader.readAsText(file);
+      };
+      const [openRow, setOpenRow] = useState(null);
+      // 按 Esc 關閉（全螢幕時 Esc 會先由瀏覽器退出全螢幕）；點視窗外的暗色區域也會關閉
+      useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape' && !document.fullscreenElement) onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [onClose]);
+      const chrono = [...history].sort((a, b) => a.finishedAt - b.finishedAt);
+      const raceNo = new Map(chrono.map((r, i) => [r.id, i + 1]));
+      const races = [...chrono].reverse();
+      const recMode = (r) => r.mode === 'shake' ? 'shake' : 'tap';   // 舊紀錄沒有模式，一律當作眼明手快
+      // 各模式總排行：有玩過該模式才出現
+      const modeBoards = MODE_OPTIONS.map(m => ({ ...m, recs: chrono.filter(r => recMode(r) === m.id) })).filter(m => m.recs.length > 0);
+      const isBoard = (v) => v === 'all' || v.startsWith('mode-');
+      const boardTitle = (v) => v === 'all' ? '全部組別總排行' : `${modeName(v.slice(5))}總排行`;
+      const p2 = (n) => String(n).padStart(2, '0');
+      const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}/${p2(d.getMonth() + 1)}/${p2(d.getDate())}`; };
+      const hhmm = (t) => { const d = new Date(t); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+
+      let rows = [];
+      if (isBoard(sel)) {
+        const src = sel === 'all' ? chrono : chrono.filter(r => `mode-${recMode(r)}` === sel);
+        rows = src.flatMap(r => r.teams.map(t => ({ ...t, recId: r.id, raceNo: raceNo.get(r.id), mode: recMode(r) })))
+          .sort((a, b) => b.score - a.score || a.raceNo - b.raceNo || a.table - b.table);
+        rows.forEach((r, i) => { r.rank = i > 0 && r.score === rows[i - 1].score ? rows[i - 1].rank : i + 1; });
+      } else {
+        const rec = history.find(r => r.id === sel);
+        rows = (rec?.teams || []).map(t => ({ ...t, recId: rec.id, raceNo: raceNo.get(rec.id), mode: recMode(rec) }));
+      }
+      const current = isBoard(sel) ? null : history.find(r => r.id === sel);
+      const medal = (rank) => rank === 1 ? 'bg-[#facc15]' : rank === 2 ? 'bg-gray-200' : rank === 3 ? 'bg-[#f59e0b]' : 'bg-white';
+
+      return (
+        <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={onClose}>
+          <div data-testid="history-modal" onClick={e => e.stopPropagation()}
+            className="bg-white border-4 border-black rounded-xl shadow-[12px_12px_0px_#000] overflow-hidden flex flex-col"
+            style={{ width: 'min(1240px, 94vw)', height: 'min(820px, 90vh)' }}>
+            <div className="bg-[#f1f5f9] border-b-4 border-black p-3 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="flex gap-2">
+                  <div className="w-5 h-5 rounded-full bg-[#e11d48] border-2 border-black"></div>
+                  <div className="w-5 h-5 rounded-full bg-[#facc15] border-2 border-black"></div>
+                  <div className="w-5 h-5 rounded-full bg-[#22c55e] border-2 border-black"></div>
+                </div>
+                <span className="font-black text-black text-xl tracking-wider uppercase font-['Righteous']">Score_Records.exe</span>
+              </div>
+            </div>
+
+            <div className="flex flex-1 min-h-0">
+              {/* 左：場次清單 */}
+              <div className="w-72 shrink-0 border-r-4 border-black bg-[#38bdf8] overflow-y-auto p-3 space-y-2">
+                <button data-race="all" onClick={() => { setSel('all'); setOpenRow(null); }}
+                  className={`w-full text-left border-4 border-black p-3 font-black shadow-[3px_3px_0px_#000] ${sel === 'all' ? SEL_ON : `bg-white text-black ${SEL_HOVER}`}`}>
+                  <div className="text-lg">全部組別總排行</div>
+                  <div className="text-xs opacity-80">{chrono.length} 場・{chrono.reduce((a, r) => a + r.teams.length, 0)} 組</div>
+                </button>
+                {modeBoards.map(m => (
+                  <button key={m.id} data-race={`mode-${m.id}`} onClick={() => { setSel(`mode-${m.id}`); setOpenRow(null); }}
+                    className={`w-full text-left border-4 border-black p-3 font-black shadow-[3px_3px_0px_#000] ${sel === `mode-${m.id}` ? SEL_ON : `bg-white text-black ${SEL_HOVER}`}`}>
+                    <div className="text-lg">{m.name}總排行</div>
+                    <div className="text-xs opacity-80">{m.recs.length} 場・{m.recs.reduce((a, r) => a + r.teams.length, 0)} 組</div>
+                  </button>
+                ))}
+                {races.map(r => {
+                  const champ = r.teams.filter(t => t.rank === 1 && t.score > 0).map(t => pad2(t.table)).join('、');
+                  return (
+                    <button key={r.id} data-race={r.id} onClick={() => { setSel(r.id); setOpenRow(null); }}
+                      className={`w-full text-left border-4 border-black p-3 font-black shadow-[3px_3px_0px_#000] ${sel === r.id ? SEL_ON : `bg-white text-black ${SEL_HOVER}`}`}>
+                      <div className="flex justify-between items-baseline"><span className="text-lg">第 {raceNo.get(r.id)} 場</span><span data-race-time className="font-hud text-[10px] whitespace-nowrap">{ymd(r.finishedAt)}<span className="ml-2">{hhmm(r.finishedAt)}</span></span></div>
+                      <div className="text-xs opacity-80">房號 {r.room}・{r.teams.length} 組</div>
+                      <div className="text-xs opacity-80">冠軍：{champ ? `第 ${champ} 桌` : '無'}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 右：成績表 */}
+              <div className="flex-1 min-w-0 overflow-y-auto p-5 bg-white">
+                {history.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center text-black">
+                    <div className="font-black text-2xl mb-2">目前還沒有成績紀錄</div>
+                    <div className="font-bold text-gray-600">比賽正常結束後，成績會自動記錄在這台電腦的瀏覽器</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between mb-4">
+                      <div className="font-black text-black text-2xl">{isBoard(sel) ? boardTitle(sel) : `第 ${raceNo.get(sel)} 場成績`}</div>
+                      {current && <div className="font-bold text-gray-600">房號 {current.room}・{modeName(current.mode)}・{ymd(current.finishedAt)} {hhmm(current.finishedAt)} 結束・{endReasonText(current.reason, current.target, current.duration)}</div>}
+                    </div>
+                    <div className="grid grid-cols-[64px_96px_80px_1fr_120px_120px_120px] items-center gap-3 px-3 pb-2 border-b-4 border-black font-black text-sm text-gray-600">
+                      <span>名次</span><span>桌號</span><span>飛機</span><span>{isBoard(sel) ? '場次' : '成員'}</span><span>模式</span><span className="text-right">總分</span><span></span>
+                    </div>
+                    {rows.map(r => {
+                      const rowKey = `${r.recId}-${r.table}`;
+                      const open = openRow === rowKey;
+                      return (
+                        <div key={rowKey} data-history-row={r.table} className="border-b-2 border-black/20">
+                          <button onClick={() => setOpenRow(open ? null : rowKey)} className={`w-full grid grid-cols-[64px_96px_80px_1fr_120px_120px_120px] items-center gap-3 px-3 py-2 text-left hover:bg-[#fef9c3] ${open ? 'bg-[#fef9c3]' : ''}`}>
+                            <span className={`w-11 h-11 rounded-full border-4 border-black flex items-center justify-center font-black text-lg ${medal(r.rank)}`}>{r.rank}</span>
+                            <span className="font-black text-2xl">#{pad2(r.table)}</span>
+                            <span className="w-16 h-7"><F1CarSVG color={colorHex(r.color)} /></span>
+                            <span className="font-bold text-gray-700 truncate">{isBoard(sel) ? `第 ${r.raceNo} 場` : `${r.players.length} 位機師`}</span>
+                            <span data-row-mode className="font-bold text-gray-700">{modeName(r.mode)}</span>
+                            <span className="font-latin text-3xl text-right">{r.score}</span>
+                            <span className="text-right font-black text-sm text-[#1e3a8a]">{open ? '收合 ▲' : '成員貢獻 ▼'}</span>
+                          </button>
+                          {open && (
+                            <div data-members className="px-3 pb-4 pt-1 grid grid-cols-2 gap-2">
+                              {r.players.length === 0 && <div className="text-gray-500 font-bold">沒有成員資料</div>}
+                              {r.players.map((p, i) => (
+                                <div key={i} className="flex items-center gap-3 bg-[#f1f5f9] border-2 border-black px-3 py-2">
+                                  <span className="font-hud font-bold text-gray-500 w-6">{i + 1}</span>
+                                  <span className="font-black truncate flex-1">{p.name}</span>
+                                  {p.leader && <span className="text-xs bg-[#e11d48] text-white px-2 py-0.5 border-2 border-black font-black">隊長</span>}
+                                  <span className="font-black text-lg w-16 text-right">{p.score}</span>
+                                  <span className="text-xs font-bold text-gray-500 w-12 text-right">{r.score ? Math.round(p.score / r.score * 100) : 0}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t-4 border-black bg-[#f1f5f9] p-3 flex justify-between items-center shrink-0">
+              {notice
+                ? <span data-testid="history-notice" className={`font-black text-sm ${notice.ok ? 'text-[#15803d]' : 'text-[#e11d48]'}`}>{notice.text}</span>
+                : <span className="font-bold text-gray-600 text-sm">成績紀錄存在這台電腦的瀏覽器；緊急中止的場次不列入</span>}
+              <div className="flex gap-3">
+                <input ref={fileRef} data-testid="restore-input" type="file" accept=".json,application/json" className="hidden" onChange={restoreFile} />
+                <button data-testid="restore-history" onClick={() => fileRef.current?.click()} className={ghostBtn}>還原成績紀錄</button>
+                {history.length > 0 && <button data-testid="export-history" onClick={exportHistory} className={ghostBtn}>匯出成績紀錄</button>}
+                {history.length > 0 && <ConfirmButton onConfirm={onClear} confirmText="再按一次確認清除" className={dangerBtn}>清除成績紀錄</ConfirmButton>}
+                <button onClick={onClose} className={ghostBtn}>關閉</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+
+    // ================= 遊戲設定視窗（目標分數、比賽秒數）=================
+    // 「自定義」選項：點一下變成輸入框，Enter 或點別處確定、Esc 取消
+    const CustomChip = ({ field, value, options, unit, range, onPick }) => {
+      const [editing, setEditing] = useState(false);
+      const [draft, setDraft] = useState('');
+      const inputRef = useRef(null);
+      const active = !options.includes(value);
+      useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+      const begin = () => { setDraft(String(active ? value : '')); setEditing(true); };
+      const commit = () => {
+        setEditing(false);
+        const n = Math.round(Number(draft));
+        if (!String(draft).trim() || !Number.isFinite(n)) return;   // 沒輸入就維持原本設定
+        onPick(Math.min(range[1], Math.max(range[0], n)));         // 超出範圍自動修正到上下限
+      };
+      if (editing) {
+        return (
+          <div className="flex items-center gap-3 shrink-0">
+            <label className={`flex items-center shrink-0 px-3 py-2 border-4 border-black font-black text-xl ${SEL_ON} translate-x-[4px] translate-y-[4px]`}>
+              <input ref={inputRef} data-setting={`${field}-custom-input`} type="number" inputMode="numeric" min={range[0]} max={range[1]}
+                value={draft} onChange={e => setDraft(e.target.value)} onBlur={commit}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                  else if (e.key === 'Escape') { e.stopPropagation(); setDraft(''); setEditing(false); }
+                }}
+                className="no-spin w-24 bg-white border-2 border-black px-2 py-0.5 text-right font-black text-xl text-black outline-none" />
+              <span className="ml-1">{unit.trim()}</span>
+            </label>
+            <span className="font-bold text-gray-500 text-sm leading-tight whitespace-nowrap">{range[0]}～{range[1]}{unit.trim()}<br />按 Enter 確定</span>
+          </div>
+        );
+      }
+      return (
+        <button data-setting={`${field}-custom`} aria-pressed={active} onClick={begin}
+          className={`min-w-[96px] shrink-0 whitespace-nowrap px-4 py-2 border-4 border-black font-black text-xl transition-all ${active ? `${SEL_ON} translate-x-[4px] translate-y-[4px] shadow-none` : `bg-white text-black shadow-[4px_4px_0px_#000] ${SEL_HOVER}`}`}>
+          {active ? <>{value}{unit}<span className="ml-2 text-sm align-middle opacity-70">自定義</span></> : '自定義'}
+        </button>
+      );
+    };
+    const GameSettings = ({ settings, onChange, onClose, wide = false }) => {
+      useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+      }, [onClose]);
+      const row = (label, desc, options, value, unit, field, range) => (
+        <div className="mb-6">
+          <div className="font-black text-black text-xl">{label}</div>
+          <div className="font-bold text-gray-500 text-sm mb-3">{desc}</div>
+          <div className="flex gap-3">
+            {options.map(v => (
+              <button key={v} data-setting={`${field}-${v}`} aria-pressed={value === v} onClick={() => onChange({ [field]: v })}
+                className={`min-w-[96px] shrink-0 whitespace-nowrap px-4 py-2 border-4 border-black font-black text-xl transition-all ${value === v ? `${SEL_ON} translate-x-[4px] translate-y-[4px] shadow-none` : `bg-white text-black shadow-[4px_4px_0px_#000] ${SEL_HOVER}`}`}>
+                {v}{unit}
+              </button>
+            ))}
+            <CustomChip field={field} value={value} options={options} unit={unit} range={range} onPick={v => onChange({ [field]: v })} />
+          </div>
+        </div>
+      );
+      return (
+        <div className="absolute inset-0 z-[70] bg-black/60 flex items-center justify-center p-6" onClick={onClose}>
+          {/* 與「查看成績」相同：視窗最高 90% 畫面高度，標題列與底部按鈕固定，中間內容放不下時才捲動；
+              超寬螢幕（高度較矮）改成左右兩欄：左＝遊玩模式，右＝目標分數＋比賽秒數 */}
+          <div data-testid="settings-modal" onClick={e => e.stopPropagation()} className="flex" style={{ width: wide ? 'min(1240px, 94vw)' : 'min(768px, 94vw)', maxHeight: '90vh' }}>
+            <RetroWindow title="Game_Settings.exe" className="max-h-full">
+              <div data-testid="settings-body" className={`p-6 bg-white flex-1 min-h-0 overflow-y-auto ${wide ? 'grid grid-cols-[340px_1fr] gap-8' : ''}`}>
+                <div className={wide ? '' : 'mb-6'}>
+                  <div className="font-black text-black text-xl">遊玩模式</div>
+                  <div className="font-bold text-gray-500 text-sm mb-3">選擇這一場比賽手機上的玩法</div>
+                  <div className={`flex gap-3 ${wide ? 'flex-col' : ''}`}>
+                    {MODE_OPTIONS.map(m => {
+                      const on = settings.mode === m.id;
+                      return (
+                        <button key={m.id} data-setting={`mode-${m.id}`} aria-pressed={on} onClick={() => onChange({ mode: m.id })}
+                          className={`flex-1 px-4 py-3 border-4 border-black text-left transition-all ${on ? `${SEL_ON} translate-x-[4px] translate-y-[4px] shadow-none` : `bg-white text-black shadow-[4px_4px_0px_#000] ${SEL_HOVER}`}`}>
+                          <div className="font-black text-xl leading-tight">{m.name}</div>
+                          <div className={`font-bold text-sm mt-1 ${on ? 'opacity-80' : 'text-gray-500'}`}>{m.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="[&>div:last-child]:mb-0">
+                  {row('目標分數', '任一組先達到這個分數，比賽立即結束', TARGET_OPTIONS, settings.target, ' 分', 'target', TARGET_RANGE)}
+                  {row('比賽秒數', '時間到還沒有隊伍達標，就以分數最高的隊伍獲勝', DURATION_OPTIONS, settings.duration, ' 秒', 'duration', DURATION_RANGE)}
+                </div>
+              </div>
+              <div className="border-t-4 border-black bg-[#f1f5f9] p-3 pl-6 flex items-center justify-between gap-4 shrink-0">
+                <span className="font-bold text-gray-500 text-sm">設定會記在這台電腦，下一個建立的房間開始套用</span>
+                <button onClick={onClose} className={ghostBtn}>關閉</button>
+              </div>
+            </RetroWindow>
+          </div>
+        </div>
+      );
+    };
+
+    // ================= 音樂與音效（只在大螢幕播放；全部由網頁即時合成 8-bit 音色，不需音檔）=================
+    // 瀏覽器規定：網頁被點擊一次之後才能出聲，所以第一次點擊（任何按鈕或左下角音效鍵）時才啟動
+    const SOUND_KEY = 'tsrc_plane_sound';
+    const Sound = (() => {
+      let ctx = null, master = null, noiseBuf = null, music = null, wanted = null, unlockedAt = 0;
+      const st = { unlocked: false, enabled: (() => { try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; } })() };
+      const subs = new Set();
+      const emit = () => subs.forEach(fn => fn({ ...st }));
+      const NOTE = n => {
+        const m = /^([A-G])(#|b)?(\d)$/.exec(n);
+        const i = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+        return 440 * Math.pow(2, (i + (m[3] - 4) * 12 - 9) / 12);
+      };
+      const tone = (f, t, dur, { type = 'square', vol = 0.12, to = null, out = master, attack = 0.005 } = {}) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type; o.frequency.setValueAtTime(typeof f === 'string' ? NOTE(f) : f, t);
+        if (to) o.frequency.exponentialRampToValueAtTime(typeof to === 'string' ? NOTE(to) : to, t + dur);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.02);
+      };
+      const noise = (t, dur, { vol = 0.2, type = 'highpass', f = 1000, to = null, q = 1, out = master } = {}) => {
+        if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+        const src = ctx.createBufferSource(), fl = ctx.createBiquadFilter(), g = ctx.createGain();
+        src.buffer = noiseBuf; src.loop = true; fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
+        if (to) fl.frequency.exponentialRampToValueAtTime(to, t + dur);
+        g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        src.connect(fl); fl.connect(g); g.connect(out); src.start(t); src.stop(t + dur + 0.02);
+      };
+      const kick = (t, out) => tone(150, t, 0.14, { type: 'sine', vol: 0.55, to: 40, out });
+      const snare = (t, out, v = 0.22) => { noise(t, 0.12, { vol: v, f: 1200, out }); tone(190, t, 0.07, { type: 'triangle', vol: v * 0.55, out }); };
+      const hat = (t, out, v = 0.05) => noise(t, 0.035, { vol: v, f: 7000, out });
+      // 銅管音色（三支微微走音的鋸齒波＋濾波），用在冠軍號角
+      const brass = (n, t, dur, vol = 0.06) => {
+        const f = typeof n === 'string' ? NOTE(n) : n;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(900, t); lp.frequency.linearRampToValueAtTime(3400, t + 0.08); lp.connect(master);
+        [0, -8, 8].forEach(c => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = c;
+          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.03);
+          g.gain.setValueAtTime(vol, t + Math.max(0.05, dur - 0.1)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          o.connect(g); g.connect(lp); o.start(t); o.stop(t + dur + 0.05);
+        });
+      };
+      const crash = (t, v = 0.22) => noise(t, 2.2, { vol: v, f: 4500 });
+      // 大空間殘響（太鼓用）：第一次用到時才建立
+      let verbNode = null;
+      const verb = () => {
+        if (verbNode) return verbNode;
+        const len = ctx.sampleRate * 2.2, buf = ctx.createBuffer(2, len, ctx.sampleRate);
+        for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+        verbNode = ctx.createConvolver(); verbNode.buffer = buf;
+        const g = ctx.createGain(); g.gain.value = 0.35; verbNode.connect(g); g.connect(master);
+        return verbNode;
+      };
+      // 送進殘響的鼓聲：同時輸出乾聲與殘響
+      const wetBus = () => { const g = ctx.createGain(); g.connect(master); g.connect(verb()); return g; };
+      const timpani = (t, v = 0.55) => { tone(98, t, 0.7, { type: 'sine', vol: v, to: 65 }); noise(t, 0.12, { vol: 0.14, type: 'lowpass', f: 500 }); };
+
+      // 配樂：和弦進行＋自動生成貝斯、旋律、鼓組
+      const TRACKS = {
+        home: { bpm: 128, chords: [['C3', 'E4', 'G4', 'C5'], ['A2', 'C4', 'E4', 'A4'], ['F2', 'A3', 'C4', 'F4'], ['G2', 'B3', 'D4', 'G4']],
+          lead: 'arp', bass: [0, 3, 6, 8, 11, 14], drums: { k: [0, 8], s: [4, 12], h: [0, 2, 4, 6, 8, 10, 12, 14] } },
+        lobby: { bpm: 96, chords: [['F2', 'A3', 'C4', 'E4'], ['E2', 'G3', 'B3', 'D4'], ['D2', 'F3', 'A3', 'C4'], ['C2', 'E3', 'G3', 'B3']],
+          lead: 'pad', bass: [0, 6, 8, 14], drums: { k: [0], s: [8], h: [4, 12] } },
+        race: { bpm: 156, chords: [['A2', 'C4', 'E4', 'A4'], ['F2', 'A3', 'C4', 'F4'], ['C3', 'E4', 'G4', 'C5'], ['G2', 'B3', 'D4', 'G4']],
+          lead: 'riff', bass: [0, 2, 4, 6, 8, 10, 12, 14], drums: { k: [0, 4, 8, 12], s: [4, 12], h: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] } },
+        // 最後 5 秒（方案 02 升調衝刺）：沿用比賽旋律、加快到 172 BPM，每過一秒升半音，最後 2 秒小鼓連打
+        final: { bpm: 172, chords: [['A2', 'C4', 'E4', 'A4'], ['F2', 'A3', 'C4', 'F4'], ['C3', 'E4', 'G4', 'C5'], ['G2', 'B3', 'D4', 'G4']],
+          lead: 'riff', bass: [0, 2, 4, 6, 8, 10, 12, 14], drums: { k: [0, 4, 8, 12], s: [4, 12], h: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] }, rise: true },
+      };
+      const RIFF = [0, null, 2, 3, null, 2, 1, null, 0, null, 2, 3, 3, 2, 1, 0];
+      const startMusic = (key) => {
+        const tr = TRACKS[key], g = ctx.createGain(); g.gain.value = 0.0001; g.connect(master);
+        g.gain.exponentialRampToValueAtTime(1, ctx.currentTime + 0.3);
+        const m = { key, step: 0, next: ctx.currentTime + 0.05, gain: g };
+        const t0 = m.next;
+        const shift = (n, semi) => semi ? NOTE(n) * Math.pow(2, semi / 12) : n;   // 移調（升調衝刺用）
+        const stepDur = 60 / tr.bpm / 4;
+        m.timer = setInterval(() => {
+          while (m.next < ctx.currentTime + 0.12) {
+            const t = m.next, i = m.step % 16, ch0 = tr.chords[Math.floor(m.step / 16) % tr.chords.length];
+            const el = t - t0, semi = tr.rise ? Math.min(4, Math.floor(el)) : 0;
+            const ch = semi ? ch0.map(n => shift(n, semi)) : ch0;
+            if (tr.bass.includes(i)) tone(ch[0], t, stepDur * 1.6, { type: key === 'lobby' ? 'triangle' : 'square', vol: key === 'lobby' ? 0.2 : 0.07, out: g });
+            if (tr.lead === 'arp' && i % 2 === 0) tone(ch[1 + (i / 2) % 3], t, stepDur * 1.5, { vol: 0.045, out: g });
+            if (tr.lead === 'arp' && i === 14) tone(ch[3], t, stepDur * 2, { vol: 0.05, out: g });
+            if (tr.lead === 'pad' && i === 0) ch.slice(1).forEach(n => tone(n, t, stepDur * 15, { type: 'triangle', vol: 0.05, attack: 0.25, out: g }));
+            if (tr.lead === 'pad' && (i === 6 || i === 10)) tone(ch[3], t, stepDur * 3, { type: 'sine', vol: 0.05, out: g });
+            if (tr.lead === 'riff' && RIFF[i] !== null) tone(shift(ch0[RIFF[i]].replace(/\d$/, d => +d + 1), semi), t, stepDur * 0.9, { vol: 0.04, out: g });
+            if (tr.drums.k.includes(i)) kick(t, g);
+            if (tr.rise && el >= 3) snare(t, g, 0.1 + 0.03 * (el - 3) * 2);   // 最後 2 秒小鼓連打、越來越大聲
+            else if (tr.drums.s.includes(i)) snare(t, g);
+            if (tr.drums.h.includes(i)) hat(t, g, key === 'lobby' ? 0.025 : 0.04);
+            if (tr.alarm && i % 4 === 0) tone(i % 8 === 0 ? 1320 : 990, t, 0.06, { vol: 0.05, out: g });
+            m.next += stepDur; m.step++;
+          }
+        }, 25);
+        music = m;
+      };
+      const stopMusic = (fade = 0.4) => {
+        if (!music) return;
+        const m = music; music = null; clearInterval(m.timer);
+        m.gain.gain.setTargetAtTime(0.0001, ctx.currentTime, fade / 3);
+        setTimeout(() => m.gain.disconnect(), fade * 1000 + 300);
+      };
+      const syncMusic = () => {
+        const want = st.unlocked && st.enabled ? wanted : null;
+        if ((music?.key || null) === want) return;
+        stopMusic();
+        if (want) startMusic(want);
+      };
+
+      // 音效
+      const FX = {
+        // 首頁標題逐字出現（方案 03 太鼓祭典）：i = 第幾個字（0～4），最後一字雙擊＋鼓邊「咔」
+        taiko(i = 0) { const t = ctx.currentTime, out = wetBus();
+          tone(i === 4 ? 70 : 90, t, 0.6, { type: 'sine', vol: 0.7, to: 50, out }); noise(t, 0.08, { vol: 0.18, type: 'lowpass', f: 700, out });
+          tone(320, t, 0.04, { type: 'triangle', vol: 0.1 });
+          if (i === 4) { tone(70, t + 0.16, 0.7, { type: 'sine', vol: 0.75, to: 45, out }); noise(t + 0.32, 0.04, { vol: 0.35, type: 'bandpass', f: 3000, q: 3 }); } },
+        thump() { const t = ctx.currentTime; tone(110, t, 0.16, { type: 'sine', vol: 0.5, to: 45 }); noise(t, 0.05, { vol: 0.12, f: 2000 }); },
+        carIn() { const t = ctx.currentTime; tone(70, t, 1.1, { type: 'sawtooth', vol: 0.08, to: 260 }); tone(72, t, 1.1, { type: 'square', vol: 0.04, to: 255 }); noise(t, 1.0, { vol: 0.08, type: 'bandpass', f: 400, to: 1400, q: 2 }); },
+        popIn() { const t = ctx.currentTime; tone('C6', t, 0.08, { vol: 0.08 }); tone('G6', t + 0.06, 0.14, { vol: 0.08 }); },
+        redLight() { tone(440, ctx.currentTime, 0.18, { vol: 0.12 }); },
+        greenLight() { tone(880, ctx.currentTime, 0.5, { vol: 0.14 }); },
+        // 賽車衝刺離開：輪胎起步摩擦＋引擎急速拉轉＋呼嘯而過
+        carDash() { const t = ctx.currentTime;
+          noise(t, 0.25, { vol: 0.09, type: 'bandpass', f: 2600, to: 1800, q: 8 });
+          tone(85, t, 0.7, { type: 'sawtooth', vol: 0.11, to: 620 }); tone(86, t, 0.7, { type: 'square', vol: 0.05, to: 610 });
+          tone(600, t + 0.62, 0.35, { type: 'sawtooth', vol: 0.06, to: 260 });
+          noise(t + 0.1, 0.8, { vol: 0.2, type: 'bandpass', f: 4500, to: 300, q: 1.2 }); },
+        carBack() { const t = ctx.currentTime; tone(80, t, 1.0, { type: 'sawtooth', vol: 0.06, to: 200 }); noise(t, 0.9, { vol: 0.05, type: 'bandpass', f: 500, to: 1200, q: 2 }); },
+        splash() { const t = ctx.currentTime; tone(55, t, 1.6, { type: 'sawtooth', vol: 0.07, to: 110 }); noise(t, 1.4, { vol: 0.07, type: 'bandpass', f: 300, to: 2400, q: 1.5 });
+          ['C4', 'G4', 'C5', 'E5'].forEach((n, i) => tone(n, t + 0.25 + i * 0.1, 1.2, { vol: 0.06, attack: 0.02 })); kick(t + 0.25); },
+        pageIn() { const t = ctx.currentTime; ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => tone(n, t + i * 0.06, 0.18, { vol: 0.07 })); noise(t, 0.3, { vol: 0.06, type: 'bandpass', f: 600, to: 3000 }); },
+        roomCreated() { const t = ctx.currentTime; ['G4', 'C5', 'E5', 'G5'].forEach((n, i) => tone(n, t + i * 0.08, 0.25, { type: 'triangle', vol: 0.15 })); tone('C6', t + 0.32, 0.5, { vol: 0.06 }); },
+        join() { const t = ctx.currentTime; tone('E6', t, 0.12, { type: 'triangle', vol: 0.15 }); tone('A6', t + 0.09, 0.3, { type: 'triangle', vol: 0.15 }); },
+        teamReady() { const t = ctx.currentTime; ['C5', 'E5', 'G5'].forEach((n, i) => tone(n, t + i * 0.07, 0.3, { type: 'triangle', vol: 0.14 })); },
+        allReady() { const t = ctx.currentTime; ['C5', 'E5', 'G5', 'C6', 'E6'].forEach((n, i) => tone(n, t + i * 0.07, 0.35, { vol: 0.07 })); },
+        countBeep() { tone(523, ctx.currentTime, 0.22, { vol: 0.16 }); },
+        go() { const t = ctx.currentTime; tone(1046, t, 0.7, { vol: 0.16 }); tone(784, t, 0.7, { vol: 0.08 }); tone(523, t, 0.7, { vol: 0.08 }); noise(t, 0.6, { vol: 0.12, type: 'bandpass', f: 3500, to: 400 }); },
+        // 最後 5 秒每秒提示音：跟著配樂一起每秒升半音（arg = 已經過幾秒，0~4）
+        tick(k = 0) { tone(NOTE('A5') * Math.pow(2, k / 12), ctx.currentTime, 0.18, { type: 'triangle', vol: 0.14 }); },
+        // 冠軍揭曉（結果畫面出現的同一刻播放）：鈸＋定音鼓＋和弦重擊 → 銅管號角上行 → 小鼓滾奏 → 最終大和弦＋閃亮琶音
+        victory() { const t = ctx.currentTime;
+          crash(t, 0.26); timpani(t); kick(t);
+          ['C3', 'C4', 'E4', 'G4', 'C5'].forEach(n => brass(n, t, 0.55, 0.045));
+          [['G4', 0.32, 0.13], ['C5', 0.46, 0.13], ['E5', 0.6, 0.13], ['G5', 0.74, 0.36], ['E5', 1.12, 0.14], ['G5', 1.27, 0.5]].forEach(([n, d, l]) => brass(n, t + d, l, 0.07));
+          [0.32, 0.74, 1.12].forEach(d => timpani(t + d, 0.35));
+          for (let i = 0; i < 12; i++) noise(t + 1.3 + i * 0.04, 0.05, { vol: 0.05 + i * 0.012, f: 1500 });
+          const T = t + 1.8;
+          crash(T, 0.3); timpani(T, 0.6); kick(T);
+          ['C3', 'G3', 'C4', 'E4', 'G4', 'C5', 'E5'].forEach(n => brass(n, T, 1.9, 0.04));
+          brass('C6', T, 1.9, 0.06);
+          ['C6', 'E6', 'G6', 'C7'].forEach((n, i) => { for (let k = 0; k < 4; k++) tone(n, T + 0.05 + (k * 4 + i) * 0.055, 0.12, { vol: 0.035 }); });
+          tone('C7', T + 1.0, 0.9, { type: 'triangle', vol: 0.05 }); },
+        abort() { const t = ctx.currentTime; ['E4', 'D#4', 'D4', 'C#4'].forEach((n, i) => tone(n, t + i * 0.22, i === 3 ? 0.7 : 0.2, { vol: 0.09 })); },
+      };
+
+      const api = {
+        state: () => ({ ...st }),
+        // 音效鍵：若這一下點擊剛好啟動了聲音，就保持開啟；之後每按一下切換開／關
+        toggle() {
+          if (Date.now() - unlockedAt < 800) { if (!st.enabled) api.setEnabled(true); return; }
+          api.unlock(); api.setEnabled(!st.enabled);
+        },
+        subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
+        // 第一次點擊時啟動聲音
+        unlock() {
+          try {
+            if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = 0.7; master.connect(ctx.destination); }
+            if (ctx.state === 'suspended') ctx.resume();
+          } catch (e) { return; }
+          if (!st.unlocked) { st.unlocked = true; unlockedAt = Date.now(); emit(); syncMusic(); }
+        },
+        setEnabled(on) { st.enabled = on; try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch {} emit(); syncMusic(); },
+        // 指定目前要播的配樂（null ＝ 停止）
+        music(key) { wanted = key || null; if (ctx) syncMusic(); },
+        sfx(name, arg) { if (!ctx || !st.unlocked || !st.enabled) return; try { FX[name](arg); } catch (e) { console.warn('音效播放失敗', e); } },
+      };
+      window.TSRC_SOUND = api;   // 方便除錯與測試
+      document.addEventListener('pointerdown', () => api.unlock(), true);
+      document.addEventListener('keydown', () => api.unlock(), true);
+      return api;
+    })();
+
+
+    // 音效開／關圖示（使用者提供的 SVG，裁切到圖案範圍、顏色跟隨文字）
+    const SOUND_ICON_ON = '<g> <polygon points="147.17 270 149.22 271.53 151.27 273.06 153.32 274.58 155.37 276.11 157.42 277.64 159.48 279.17 161.53 280.7 163.58 282.22 165.63 283.75 167.68 285.28 169.73 286.81 171.78 288.34 173.83 289.87 175.88 291.39 177.94 292.92 179.99 294.45 182.04 295.98 184.09 297.51 186.14 299.03 188.19 300.56 190.24 302.09 192.29 303.62 194.35 305.15 196.4 306.67 198.45 308.2 200.5 309.73 202.55 311.26 204.6 312.79 206.65 314.32 208.7 315.84 210.75 317.37 212.81 318.9 214.86 320.43 216.91 321.96 218.96 323.48 221.01 325.01 223.06 326.54 225.11 328.07 227.16 329.6 229.21 331.12 231.27 332.65 233.32 334.18 235.37 335.71 237.42 337.24 239.47 338.77 241.52 340.29 243.57 341.82 245.62 343.35 247.67 344.88 249.73 346.41 251.78 347.93 253.83 349.46 255.88 350.99 257.93 352.52 259.98 354.05 262.03 355.57 264.08 357.1 266.13 358.63 268.19 360.16 270.24 361.69 272.29 363.21 274.34 364.74 276.39 366.27 278.44 367.8 278.44 364.74 278.44 361.69 278.44 358.63 278.44 355.57 278.44 352.52 278.44 349.46 278.44 346.41 278.44 343.35 278.44 340.29 278.44 337.24 278.44 334.18 278.44 331.12 278.44 328.07 278.44 325.01 278.44 321.96 278.44 318.9 278.44 315.84 278.44 312.79 278.44 309.73 278.44 306.67 278.44 303.62 278.44 300.56 278.44 297.51 278.44 294.45 278.44 291.39 278.44 288.34 278.44 285.28 278.44 282.22 278.44 279.17 278.44 276.11 278.44 273.06 278.44 270 278.44 266.94 278.44 263.89 278.44 260.83 278.44 257.78 278.44 254.72 278.44 251.66 278.44 248.61 278.44 245.55 278.44 242.49 278.44 239.44 278.44 236.38 278.44 233.33 278.44 230.27 278.44 227.21 278.44 224.16 278.44 221.1 278.44 218.04 278.44 214.99 278.44 211.93 278.44 208.88 278.44 205.82 278.44 202.76 278.44 199.71 278.44 196.65 278.44 193.59 278.44 190.54 278.44 187.48 278.44 184.43 278.44 181.37 278.44 178.31 278.44 175.26 278.44 172.2 276.39 173.73 274.34 175.26 272.29 176.79 270.24 178.31 268.19 179.84 266.13 181.37 264.08 182.9 262.03 184.43 259.98 185.95 257.93 187.48 255.88 189.01 253.83 190.54 251.78 192.07 249.73 193.59 247.67 195.12 245.62 196.65 243.57 198.18 241.52 199.71 239.47 201.24 237.42 202.76 235.37 204.29 233.32 205.82 231.27 207.35 229.21 208.88 227.16 210.4 225.11 211.93 223.06 213.46 221.01 214.99 218.96 216.52 216.91 218.04 214.86 219.57 212.81 221.1 210.75 222.63 208.7 224.16 206.65 225.68 204.6 227.21 202.55 228.74 200.5 230.27 198.45 231.8 196.4 233.33 194.35 234.85 192.29 236.38 190.24 237.91 188.19 239.44 186.14 240.97 184.09 242.49 182.04 244.02 179.99 245.55 177.94 247.08 175.88 248.61 173.83 250.13 171.78 251.66 169.73 253.19 167.68 254.72 165.63 256.25 163.58 257.78 161.53 259.3 159.48 260.83 157.42 262.36 155.37 263.89 153.32 265.42 151.27 266.94 149.22 268.47 147.17 270"/> <polygon points="204.67 312.35 203.78 312.35 202.88 312.35 201.98 312.35 201.08 312.35 200.18 312.35 199.28 312.35 198.38 312.35 197.49 312.35 196.59 312.35 195.69 312.35 194.79 312.35 193.89 312.35 192.99 312.35 192.09 312.35 191.2 312.35 190.3 312.35 189.4 312.35 188.5 312.35 187.6 312.35 186.7 312.35 185.81 312.35 184.91 312.35 184.01 312.35 183.11 312.35 182.21 312.35 181.31 312.35 180.41 312.35 179.52 312.35 178.62 312.35 177.72 312.35 176.82 312.35 175.92 312.35 175.02 312.35 174.12 312.35 173.23 312.35 172.33 312.35 171.43 312.35 170.53 312.35 169.63 312.35 168.73 312.35 167.83 312.35 166.94 312.35 166.04 312.35 165.14 312.35 164.24 312.35 163.34 312.35 162.44 312.35 161.55 312.35 160.65 312.35 159.75 312.35 158.85 312.35 157.95 312.35 157.05 312.35 156.15 312.35 155.26 312.35 154.36 312.35 153.46 312.35 152.56 312.35 151.66 312.35 150.76 312.35 149.86 312.35 148.97 312.35 148.07 312.35 147.17 312.35 147.17 311.03 147.17 309.71 147.17 308.38 147.17 307.06 147.17 305.74 147.17 304.41 147.17 303.09 147.17 301.76 147.17 300.44 147.17 299.12 147.17 297.79 147.17 296.47 147.17 295.15 147.17 293.82 147.17 292.5 147.17 291.18 147.17 289.85 147.17 288.53 147.17 287.21 147.17 285.88 147.17 284.56 147.17 283.24 147.17 281.91 147.17 280.59 147.17 279.26 147.17 277.94 147.17 276.62 147.17 275.29 147.17 273.97 147.17 272.65 147.17 271.32 147.17 270 147.17 268.68 147.17 267.35 147.17 266.03 147.17 264.71 147.17 263.38 147.17 262.06 147.17 260.74 147.17 259.41 147.17 258.09 147.17 256.76 147.17 255.44 147.17 254.12 147.17 252.79 147.17 251.47 147.17 250.15 147.17 248.82 147.17 247.5 147.17 246.18 147.17 244.85 147.17 243.53 147.17 242.21 147.17 240.88 147.17 239.56 147.17 238.24 147.17 236.91 147.17 235.59 147.17 234.26 147.17 232.94 147.17 231.62 147.17 230.29 147.17 228.97 147.17 227.65 148.07 227.65 148.97 227.65 149.86 227.65 150.76 227.65 151.66 227.65 152.56 227.65 153.46 227.65 154.36 227.65 155.26 227.65 156.15 227.65 157.05 227.65 157.95 227.65 158.85 227.65 159.75 227.65 160.65 227.65 161.55 227.65 162.44 227.65 163.34 227.65 164.24 227.65 165.14 227.65 166.04 227.65 166.94 227.65 167.83 227.65 168.73 227.65 169.63 227.65 170.53 227.65 171.43 227.65 172.33 227.65 173.23 227.65 174.12 227.65 175.02 227.65 175.92 227.65 176.82 227.65 177.72 227.65 178.62 227.65 179.52 227.65 180.41 227.65 181.31 227.65 182.21 227.65 183.11 227.65 184.01 227.65 184.91 227.65 185.81 227.65 186.7 227.65 187.6 227.65 188.5 227.65 189.4 227.65 190.3 227.65 191.2 227.65 192.09 227.65 192.99 227.65 193.89 227.65 194.79 227.65 195.69 227.65 196.59 227.65 197.49 227.65 198.38 227.65 199.28 227.65 200.18 227.65 201.08 227.65 201.98 227.65 202.88 227.65 203.78 227.65 204.67 227.65 204.67 228.97 204.67 230.29 204.67 231.62 204.67 232.94 204.67 234.26 204.67 235.59 204.67 236.91 204.67 238.24 204.67 239.56 204.67 240.88 204.67 242.21 204.67 243.53 204.67 244.85 204.67 246.18 204.67 247.5 204.67 248.82 204.67 250.15 204.67 251.47 204.67 252.79 204.67 254.12 204.67 255.44 204.67 256.76 204.67 258.09 204.67 259.41 204.67 260.74 204.67 262.06 204.67 263.38 204.67 264.71 204.67 266.03 204.67 267.35 204.67 268.68 204.67 270 204.67 271.32 204.67 272.65 204.67 273.97 204.67 275.29 204.67 276.62 204.67 277.94 204.67 279.26 204.67 280.59 204.67 281.91 204.67 283.24 204.67 284.56 204.67 285.88 204.67 287.21 204.67 288.53 204.67 289.85 204.67 291.18 204.67 292.5 204.67 293.82 204.67 295.15 204.67 296.47 204.67 297.79 204.67 299.12 204.67 300.44 204.67 301.76 204.67 303.09 204.67 304.41 204.67 305.74 204.67 307.06 204.67 308.38 204.67 309.71 204.67 311.03 204.67 312.35"/> </g> <path d="M329.4,361.98s-.09,0-.13,0c-.04,0-.09,0-.13,0-.04,0-.09,0-.13,0-.04,0-.09,0-.13,0s-.09,0-.13-.01c-.04,0-.09,0-.13-.01-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02s-.09-.02-.13-.03c-.04,0-.09-.02-.13-.03-.04,0-.09-.02-.13-.03-.04-.01-.09-.02-.13-.03-.04-.01-.09-.02-.13-.03-.04-.01-.09-.02-.13-.04-.04-.01-.08-.03-.13-.04-.04-.01-.08-.03-.13-.04s-.08-.03-.13-.04-.08-.03-.12-.05-.08-.03-.12-.05c-.04-.02-.08-.03-.12-.05-.04-.02-.08-.03-.12-.05-.04-.02-.08-.04-.12-.05-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.07-.04-.02-.08-.04-.11-.07-.04-.02-.08-.05-.11-.07-.04-.02-.08-.05-.11-.07-.04-.02-.07-.05-.11-.07-.04-.02-.07-.05-.11-.08s-.07-.05-.11-.08c-.04-.03-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.06-.1-.08-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.06-.06-.1-.09s-.06-.06-.1-.1c-.03-.03-.06-.06-.09-.1-.03-.03-.06-.07-.09-.1-.03-.03-.06-.07-.09-.1s-.06-.07-.09-.1c-.03-.03-.06-.07-.09-.1-.03-.04-.06-.07-.08-.11s-.06-.07-.08-.11c-.03-.04-.05-.07-.08-.11-.03-.04-.05-.07-.08-.11-.03-.04-.05-.08-.08-.11-.03-.04-.05-.08-.08-.12s-.05-.08-.07-.12c-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12s-.04-.08-.07-.12-.04-.08-.06-.13c-.02-.04-.04-.08-.06-.13-.02-.04-.04-.09-.06-.13-.02-.04-.04-.09-.06-.13-.02-.06-.05-.12-.07-.18-.02-.06-.05-.12-.07-.18-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.05-.18-.02-.06-.03-.12-.05-.18-.02-.06-.03-.12-.04-.18-.01-.06-.03-.12-.04-.18s-.02-.12-.03-.18c-.01-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06,0-.12-.01-.18,0-.06,0-.12,0-.18s0-.12,0-.18,0-.12,0-.18c0-.06,0-.12,0-.18,0-.06,0-.12.01-.18,0-.06,0-.12.02-.18,0-.06.01-.12.02-.18,0-.06.02-.12.02-.18,0-.06.02-.12.03-.18.01-.06.02-.12.03-.17.01-.06.02-.12.04-.17.01-.06.03-.12.04-.17.01-.06.03-.11.04-.17.02-.06.03-.11.05-.17.02-.06.03-.11.05-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.16.02-.05.04-.11.07-.16.02-.05.05-.11.07-.16.02-.05.05-.11.08-.16s.05-.11.08-.16c.03-.05.06-.1.08-.16.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.07-.1.1-.15.03-.05.07-.1.1-.15.03-.05.07-.1.11-.14.04-.05.07-.09.11-.14.04-.05.07-.09.11-.14.04-.05.08-.09.12-.14.04-.04.08-.09.12-.13.04-.04.08-.09.12-.13.04-.04.08-.09.13-.13.04-.04.09-.08.13-.12.04-.04.09-.08.13-.12.05-.04.09-.08.14-.12.05-.04.09-.08.14-.12.05-.04.1-.08.14-.11.05-.04.1-.07.15-.11s.1-.07.15-.11c.05-.03.1-.07.15-.1.05-.03.1-.07.16-.1.05-.03.11-.06.16-.1.05-.03.11-.06.16-.09.05-.03.11-.06.17-.09.06-.03.11-.06.17-.08.06-.03.11-.05.17-.08.06-.03.12-.05.17-.08.49-.21.98-.42,1.46-.63.48-.22.96-.43,1.44-.66.48-.22.95-.45,1.43-.68.47-.23.94-.47,1.41-.71.47-.24.93-.48,1.39-.73.46-.25.92-.5,1.38-.76.46-.26.91-.52,1.36-.78.45-.26.9-.53,1.34-.8.44-.27.88-.55,1.32-.82.44-.28.87-.56,1.3-.85.43-.29.86-.58,1.29-.87.43-.29.85-.59,1.27-.89.42-.3.84-.6,1.25-.91.41-.31.82-.62,1.23-.93s.81-.63,1.21-.95c.4-.32.8-.65,1.19-.98.39-.33.78-.66,1.17-1,.39-.34.77-.67,1.15-1.02.38-.34.76-.69,1.13-1.04s.74-.7,1.11-1.05c.37-.35.73-.71,1.09-1.07.36-.36.72-.73,1.07-1.09.35-.37.7-.74,1.05-1.11.35-.37.69-.75,1.03-1.13.34-.38.68-.76,1.01-1.15.33-.39.66-.77.99-1.16.32-.39.65-.78.96-1.18.32-.4.63-.8.94-1.2.31-.4.62-.81.92-1.21.3-.41.6-.82.9-1.23.3-.41.59-.83.88-1.25s.57-.84.85-1.26c.28-.42.56-.85.83-1.28.27-.43.54-.86.81-1.29.27-.43.53-.87.78-1.31.26-.44.51-.88.76-1.32.25-.44.49-.89.74-1.34.24-.45.48-.9.71-1.35.23-.45.46-.91.69-1.36.23-.46.45-.91.66-1.38.22-.46.43-.92.64-1.39.21-.46.41-.93.61-1.4s.4-.94.59-1.41c.19-.47.38-.95.56-1.42.18-.48.36-.96.54-1.44.18-.48.35-.96.51-1.45.17-.48.33-.97.49-1.46.16-.49.31-.98.46-1.47.15-.49.29-.98.43-1.48.14-.49.28-.99.41-1.49.13-.5.26-1,.38-1.5.12-.5.24-1,.35-1.51.11-.5.22-1.01.33-1.52s.2-1.01.3-1.52.19-1.02.27-1.53.17-1.03.24-1.54c.08-.51.15-1.03.22-1.55.07-.52.13-1.04.19-1.56.06-.52.11-1.04.16-1.56.05-.52.09-1.04.13-1.57.04-.52.07-1.05.1-1.58.03-.53.05-1.05.07-1.58.02-.53.03-1.06.04-1.59,0-.53.01-1.06.01-1.59s0-1.06-.01-1.59c0-.53-.02-1.06-.04-1.59s-.04-1.06-.07-1.58c-.03-.53-.06-1.05-.1-1.58-.04-.52-.08-1.05-.13-1.57s-.1-1.04-.16-1.56c-.06-.52-.12-1.04-.19-1.56-.07-.52-.14-1.03-.22-1.55-.08-.51-.16-1.03-.24-1.54s-.18-1.02-.27-1.53-.2-1.02-.3-1.52-.21-1.01-.33-1.52c-.11-.5-.23-1.01-.35-1.51-.12-.5-.25-1-.38-1.5-.13-.5-.27-.99-.41-1.49-.14-.49-.29-.99-.43-1.48-.15-.49-.3-.98-.46-1.47s-.32-.97-.49-1.46c-.17-.48-.34-.97-.51-1.45-.18-.48-.35-.96-.54-1.44-.18-.48-.37-.95-.56-1.42-.19-.47-.39-.94-.59-1.41-.2-.47-.41-.94-.61-1.4-.21-.46-.42-.93-.64-1.39-.22-.46-.44-.92-.66-1.38-.23-.46-.45-.91-.69-1.36-.23-.45-.47-.9-.71-1.35-.24-.45-.49-.89-.74-1.34-.25-.44-.5-.88-.76-1.32-.26-.44-.52-.87-.78-1.31-.27-.43-.53-.86-.81-1.29-.27-.43-.55-.85-.83-1.28-.28-.42-.56-.84-.85-1.26s-.58-.83-.88-1.25c-.3-.41-.59-.82-.9-1.23-.3-.41-.61-.81-.92-1.21-.31-.4-.62-.8-.94-1.2-.32-.4-.64-.79-.96-1.18-.33-.39-.65-.78-.99-1.16-.33-.39-.67-.77-1.01-1.15-.34-.38-.68-.76-1.03-1.13-.35-.37-.7-.74-1.05-1.11s-.71-.73-1.07-1.09c-.36-.36-.72-.72-1.09-1.07-.37-.35-.74-.71-1.11-1.05-.37-.35-.75-.69-1.13-1.04-.38-.34-.76-.68-1.15-1.02-.39-.34-.78-.67-1.17-1-.39-.33-.79-.65-1.19-.98-.4-.32-.8-.64-1.21-.96-.41-.31-.82-.63-1.23-.93-.41-.31-.83-.61-1.25-.91-.42-.3-.84-.6-1.27-.89-.43-.29-.85-.58-1.29-.87-.43-.29-.87-.57-1.3-.85-.44-.28-.88-.55-1.32-.82-.44-.27-.89-.54-1.34-.8-.45-.26-.9-.52-1.36-.78-.46-.26-.91-.51-1.38-.76-.46-.25-.93-.49-1.39-.73-.47-.24-.94-.48-1.41-.71-.47-.23-.95-.46-1.43-.68-.48-.22-.96-.44-1.44-.66-.48-.22-.97-.43-1.46-.63-.06-.02-.12-.05-.17-.08-.06-.03-.11-.05-.17-.08-.06-.03-.11-.06-.17-.08-.06-.03-.11-.06-.17-.09-.05-.03-.11-.06-.16-.09-.05-.03-.11-.06-.16-.1-.05-.03-.1-.07-.16-.1-.05-.03-.1-.07-.15-.1-.05-.03-.1-.07-.15-.11-.05-.04-.1-.07-.15-.11s-.1-.07-.14-.11c-.05-.04-.09-.08-.14-.12-.05-.04-.09-.08-.14-.12-.05-.04-.09-.08-.13-.12-.04-.04-.09-.08-.13-.12-.04-.04-.08-.08-.13-.13-.04-.04-.08-.09-.12-.13-.04-.04-.08-.09-.12-.13-.04-.04-.08-.09-.12-.14-.04-.05-.08-.09-.11-.14-.04-.05-.07-.09-.11-.14-.04-.05-.07-.1-.11-.14-.03-.05-.07-.1-.1-.15-.03-.05-.07-.1-.1-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.08-.16-.03-.05-.05-.11-.08-.16s-.05-.11-.08-.16c-.02-.05-.05-.11-.07-.16-.02-.05-.05-.11-.07-.16-.02-.05-.04-.11-.06-.16-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.05-.17-.02-.06-.03-.11-.05-.17-.02-.06-.03-.11-.04-.17-.01-.06-.03-.12-.04-.17-.01-.06-.02-.12-.04-.17-.01-.06-.02-.12-.03-.17,0-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06,0-.12-.01-.18,0-.06,0-.12,0-.18,0-.06,0-.12,0-.18s0-.12,0-.18,0-.12,0-.18,0-.12.01-.18c0-.06,0-.12.02-.18,0-.06.01-.12.02-.18,0-.06.02-.12.02-.18,0-.06.02-.12.03-.18.01-.06.02-.12.03-.18s.02-.12.04-.18c.01-.06.03-.12.04-.18.02-.06.03-.12.05-.18.02-.06.03-.12.05-.18.02-.06.04-.12.06-.18.02-.06.04-.12.06-.18.02-.06.04-.12.07-.18.02-.06.05-.12.07-.18.02-.06.05-.12.08-.17s.05-.11.08-.17c.03-.06.06-.11.08-.17.03-.06.06-.11.09-.17.03-.05.06-.11.09-.16.03-.05.06-.11.09-.16.03-.05.07-.1.1-.16.03-.05.07-.1.1-.15.03-.05.07-.1.11-.15.04-.05.07-.1.11-.15.04-.05.07-.1.11-.14.04-.05.08-.09.12-.14s.08-.09.12-.14c.04-.05.08-.09.12-.13.04-.04.08-.09.12-.13.04-.04.08-.08.13-.13.04-.04.09-.08.13-.12.04-.04.09-.08.13-.12.04-.04.09-.08.14-.12.05-.04.09-.08.14-.11.05-.04.09-.07.14-.11.05-.04.09-.07.14-.11.05-.03.1-.07.15-.1.05-.03.1-.07.15-.1.05-.03.1-.06.15-.1.05-.03.1-.06.15-.09.05-.03.1-.06.15-.09.05-.03.1-.06.16-.08.05-.03.1-.05.16-.08.05-.03.11-.05.16-.08s.11-.05.16-.07c.05-.02.11-.05.16-.07.05-.02.11-.04.16-.06.05-.02.11-.04.17-.06.06-.02.11-.04.17-.06.06-.02.11-.04.17-.05.06-.02.11-.03.17-.05.06-.02.11-.03.17-.04.06-.01.12-.03.17-.04.06-.01.12-.03.17-.04.06-.01.12-.02.17-.03.06-.01.12-.02.18-.03.06,0,.12-.02.18-.02.06,0,.12-.01.18-.02s.12-.01.18-.02c.06,0,.12,0,.18-.01.06,0,.12,0,.18,0,.06,0,.12,0,.18,0s.12,0,.18,0c.06,0,.12,0,.18,0,.06,0,.12,0,.18.01.06,0,.12,0,.18.02.06,0,.12.01.18.02.06,0,.12.02.18.02.06,0,.12.02.18.03.06.01.12.02.18.03.06.01.12.02.18.04.06.01.12.03.18.04s.12.03.18.05c.06.02.12.03.18.05.06.02.12.04.18.06.06.02.12.04.18.06.06.02.12.04.18.07.06.02.12.05.18.07.57.24,1.15.49,1.71.74s1.13.51,1.7.77c.56.26,1.12.53,1.68.8s1.11.55,1.66.83c.55.28,1.09.57,1.64.86s1.08.59,1.62.89c.54.3,1.07.61,1.6.91s1.05.62,1.57.94c.52.32,1.04.64,1.55.97s1.03.66,1.53.99c.51.34,1.01.68,1.51,1.02.5.34,1,.69,1.49,1.05.49.35.98.71,1.47,1.07.49.36.97.73,1.44,1.1.48.37.95.74,1.42,1.12.47.38.94.76,1.4,1.15.46.39.92.78,1.38,1.17.45.39.91.79,1.35,1.19.45.4.89.81,1.33,1.22.44.41.87.82,1.31,1.24s.86.84,1.28,1.26c.42.42.84.85,1.26,1.28.42.43.83.87,1.23,1.3.41.44.81.88,1.21,1.33.4.45.79.89,1.18,1.35.39.45.78.91,1.16,1.37s.76.92,1.13,1.39c.37.47.74.93,1.11,1.41.36.47.73.95,1.08,1.43.36.48.71.96,1.05,1.45.35.48.69.97,1.03,1.46.34.49.67.99,1,1.48.33.5.65,1,.97,1.5.32.5.64,1.01.95,1.52.31.51.62,1.02.92,1.54.3.51.6,1.03.89,1.55s.58,1.04.86,1.57c.28.53.56,1.05.84,1.58.27.53.54,1.06.81,1.6.26.54.52,1.07.78,1.62.26.54.51,1.08.75,1.63.25.55.49,1.09.72,1.64.24.55.47,1.1.69,1.66.23.56.45,1.11.66,1.67.22.56.43,1.12.63,1.69.21.56.41,1.13.6,1.7.2.57.39,1.14.57,1.71.19.57.37,1.15.54,1.72.18.58.35,1.16.51,1.74.16.58.32,1.16.48,1.75.15.58.3,1.17.45,1.76.14.59.28,1.18.42,1.77.13.59.26,1.19.38,1.78.12.6.24,1.19.35,1.79.11.6.22,1.2.32,1.8.1.6.2,1.2.29,1.81.09.6.18,1.21.25,1.82.08.61.15,1.22.22,1.83s.13,1.22.19,1.84c.06.61.11,1.23.15,1.84.05.62.09,1.23.12,1.85s.06,1.24.09,1.86c.02.62.04,1.24.05,1.86s.02,1.25.02,1.87,0,1.25-.02,1.87c-.01.62-.03,1.24-.05,1.86-.02.62-.05,1.24-.09,1.86-.03.62-.07,1.24-.12,1.85-.05.62-.1,1.23-.15,1.84-.06.61-.12,1.22-.19,1.84s-.14,1.22-.22,1.83-.16,1.21-.25,1.82c-.09.6-.19,1.21-.29,1.81-.1.6-.21,1.2-.32,1.8-.11.6-.23,1.2-.35,1.79-.12.6-.25,1.19-.38,1.78-.13.59-.27,1.18-.42,1.77s-.29,1.17-.45,1.76c-.15.58-.31,1.17-.48,1.75-.16.58-.33,1.16-.51,1.74s-.36,1.15-.54,1.72-.38,1.14-.57,1.71c-.2.57-.4,1.13-.6,1.7-.21.56-.42,1.13-.63,1.69-.22.56-.44,1.12-.66,1.67-.23.56-.46,1.11-.69,1.66-.24.55-.48,1.1-.72,1.64-.25.55-.5,1.09-.75,1.63-.25.54-.51,1.08-.78,1.62-.26.54-.53,1.07-.81,1.6-.27.53-.55,1.06-.84,1.58-.28.53-.57,1.05-.86,1.57-.29.52-.59,1.04-.89,1.55-.3.51-.61,1.03-.92,1.54-.31.51-.63,1.01-.95,1.52-.32.5-.65,1-.97,1.5-.33.5-.66.99-1,1.48-.34.49-.68.98-1.03,1.46-.35.48-.7.97-1.05,1.45-.36.48-.72.95-1.08,1.43s-.73.94-1.11,1.41-.75.93-1.13,1.39c-.38.46-.77.91-1.16,1.37-.39.45-.78.9-1.18,1.35-.4.45-.8.89-1.21,1.33-.41.44-.82.87-1.23,1.3-.41.43-.83.86-1.26,1.28-.42.42-.85.84-1.28,1.26s-.87.83-1.31,1.24c-.44.41-.88.81-1.33,1.22s-.9.8-1.35,1.19c-.45.39-.91.78-1.38,1.17-.46.39-.93.77-1.4,1.15-.47.38-.94.75-1.42,1.12s-.96.74-1.44,1.1c-.49.36-.97.72-1.47,1.07-.49.35-.99.7-1.49,1.05-.5.34-1,.69-1.51,1.02-.51.34-1.02.67-1.53.99s-1.03.65-1.55.97c-.52.32-1.05.63-1.57.94-.53.31-1.06.61-1.6.91s-1.07.6-1.62.89-1.09.58-1.64.86-1.1.56-1.66.83c-.56.27-1.11.54-1.68.8s-1.13.52-1.7.77c-.57.25-1.14.5-1.71.74-.01,0-.03.01-.04.02l-.04.02s-.03.01-.04.02c-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02s-.03.01-.04.01c-.01,0-.03.01-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01s-.03,0-.04.01c-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.05.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.05.01-.02,0-.03,0-.05.01-.01,0-.03,0-.05.01-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0s-.03,0-.05,0c-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.02,0-.03,0-.05,0s-.03,0-.05,0c-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0h-.04Z"/> <path d="M316.47,331.41s-.09,0-.13,0c-.04,0-.09,0-.13,0-.04,0-.09,0-.13,0-.04,0-.09,0-.13,0s-.09,0-.13-.01c-.04,0-.09,0-.13-.01-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.02-.13-.03-.04,0-.09-.02-.13-.03-.04,0-.09-.02-.13-.03s-.09-.02-.13-.03c-.04-.01-.09-.02-.13-.03-.04-.01-.09-.02-.13-.04-.04-.01-.08-.03-.13-.04-.04-.01-.08-.03-.13-.04-.04-.01-.08-.03-.13-.04-.04-.02-.08-.03-.12-.05s-.08-.03-.12-.05c-.04-.02-.08-.03-.12-.05-.04-.02-.08-.03-.12-.05-.04-.02-.08-.04-.12-.05-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06s-.08-.04-.12-.07c-.04-.02-.08-.04-.11-.07-.04-.02-.08-.05-.11-.07s-.08-.05-.11-.07c-.04-.02-.07-.05-.11-.07-.04-.02-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.06-.1-.08s-.07-.06-.1-.09c-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09s-.07-.06-.1-.09c-.03-.03-.06-.06-.1-.09-.03-.03-.06-.06-.1-.1-.03-.03-.06-.06-.09-.1s-.06-.07-.09-.1c-.03-.03-.06-.07-.09-.1-.03-.03-.06-.07-.09-.1s-.06-.07-.09-.1c-.03-.04-.06-.07-.09-.11-.03-.04-.06-.07-.08-.11-.03-.04-.05-.07-.08-.11-.03-.04-.05-.07-.08-.11-.03-.04-.05-.08-.08-.11-.03-.04-.05-.08-.08-.12-.03-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.04-.08-.07-.12-.02-.04-.04-.08-.06-.13-.02-.04-.04-.08-.06-.13-.02-.04-.04-.09-.06-.13-.02-.04-.04-.09-.06-.13-.02-.06-.05-.12-.07-.18-.02-.06-.05-.12-.07-.18-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.05-.18-.02-.06-.03-.12-.05-.18-.02-.06-.03-.12-.04-.18-.01-.06-.03-.12-.04-.18s-.02-.12-.03-.18c-.01-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06,0-.12-.01-.18,0-.06,0-.12,0-.18s0-.12,0-.18,0-.12,0-.18c0-.06,0-.12,0-.18,0-.06,0-.12.01-.18,0-.06,0-.12.02-.18,0-.06.01-.12.02-.18,0-.06.02-.12.02-.18s.02-.12.03-.18c0-.06.02-.12.03-.17.01-.06.02-.12.04-.17.01-.06.03-.12.04-.17.01-.06.03-.11.04-.17.02-.06.03-.11.05-.17.02-.06.03-.11.05-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.16.02-.05.04-.11.07-.16.02-.05.05-.11.07-.16.02-.05.05-.11.08-.16.03-.05.05-.11.08-.16.03-.05.05-.1.08-.16.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.07-.1.1-.15.03-.05.07-.1.1-.15.03-.05.07-.1.11-.14.04-.05.07-.09.11-.14.04-.05.07-.09.11-.14.04-.05.08-.09.12-.14.04-.04.08-.09.12-.13s.08-.09.12-.13c.04-.04.08-.09.13-.13.04-.04.09-.08.13-.12.04-.04.09-.08.13-.12.05-.04.09-.08.14-.12s.09-.08.14-.12c.05-.04.1-.08.14-.11.05-.04.1-.07.15-.11.05-.04.1-.07.15-.11.05-.03.1-.07.15-.1.05-.03.1-.07.16-.1.05-.03.11-.06.16-.1.05-.03.11-.06.16-.09.05-.03.11-.06.17-.09.06-.03.11-.06.17-.08.06-.03.11-.05.17-.08.06-.03.12-.05.17-.08.3-.13.59-.25.89-.38.29-.13.59-.26.88-.4.29-.14.58-.27.87-.41.29-.14.57-.28.86-.43.28-.15.57-.29.85-.44.28-.15.56-.3.84-.46.28-.16.55-.31.82-.47.27-.16.54-.32.81-.49.27-.16.54-.33.8-.5.27-.17.53-.34.79-.51s.52-.35.78-.53c.26-.18.51-.36.77-.54.25-.18.51-.37.76-.55s.5-.38.75-.57c.25-.19.49-.38.73-.58.24-.2.48-.39.72-.59s.48-.4.71-.6c.24-.2.47-.41.7-.62.23-.21.46-.42.69-.63.23-.21.45-.42.67-.64.22-.22.44-.43.66-.65.22-.22.44-.44.65-.66.21-.22.43-.45.64-.67.21-.23.42-.46.62-.69.21-.23.41-.46.61-.7.2-.23.4-.47.6-.71.2-.24.39-.48.59-.72.19-.24.38-.48.57-.73.19-.24.37-.49.56-.74.18-.25.37-.5.55-.75.18-.25.36-.5.53-.76.17-.25.35-.51.52-.77.17-.26.34-.52.5-.78.17-.26.33-.52.49-.78.16-.26.32-.53.48-.79.16-.27.31-.53.46-.8.15-.27.3-.54.45-.81.15-.27.29-.54.43-.82.14-.27.28-.55.42-.83.14-.28.27-.56.4-.83.13-.28.26-.56.39-.84.13-.28.25-.57.37-.85.12-.28.24-.57.36-.86.12-.29.23-.58.34-.86.11-.29.22-.58.33-.87.11-.29.21-.58.31-.88.1-.29.2-.59.3-.88.1-.3.19-.59.28-.89.09-.3.18-.6.26-.9s.17-.6.25-.9c.08-.3.16-.61.23-.91.07-.3.15-.61.21-.91s.13-.61.2-.92c.06-.31.12-.62.18-.93s.11-.62.17-.93c.05-.31.1-.62.15-.93s.09-.63.13-.94c.04-.31.08-.63.11-.94s.07-.63.1-.95c.03-.32.06-.63.08-.95.02-.32.04-.64.06-.96.02-.32.03-.64.04-.96.01-.32.02-.64.03-.96,0-.32,0-.64,0-.97s0-.64,0-.97-.01-.64-.03-.96c-.01-.32-.03-.64-.04-.96-.02-.32-.04-.64-.06-.96-.02-.32-.05-.64-.08-.95-.03-.32-.06-.63-.1-.95-.04-.32-.07-.63-.11-.94-.04-.31-.08-.63-.13-.94s-.1-.62-.15-.94c-.05-.31-.11-.62-.17-.93-.06-.31-.12-.62-.18-.93-.06-.31-.13-.61-.2-.92-.07-.31-.14-.61-.21-.91-.07-.3-.15-.61-.23-.91-.08-.3-.16-.6-.25-.9-.09-.3-.17-.6-.26-.9s-.18-.59-.28-.89c-.1-.3-.19-.59-.3-.88s-.2-.59-.31-.88c-.11-.29-.22-.58-.33-.87s-.23-.58-.34-.86-.24-.57-.36-.86c-.12-.28-.25-.57-.37-.85-.13-.28-.26-.56-.39-.84-.13-.28-.27-.56-.4-.83-.14-.28-.28-.55-.42-.83-.14-.27-.29-.55-.43-.82-.15-.27-.3-.54-.45-.81-.15-.27-.3-.54-.46-.8-.16-.27-.31-.53-.48-.79-.16-.26-.32-.52-.49-.78-.17-.26-.33-.52-.5-.78-.17-.26-.34-.51-.52-.77-.17-.25-.35-.51-.53-.76-.18-.25-.36-.5-.55-.75-.18-.25-.37-.49-.56-.74-.19-.24-.38-.49-.57-.73s-.39-.48-.59-.72c-.2-.24-.4-.47-.6-.71-.2-.23-.41-.47-.61-.7-.21-.23-.41-.46-.62-.69s-.42-.45-.64-.67c-.21-.22-.43-.44-.65-.66-.22-.22-.44-.44-.66-.65-.22-.22-.45-.43-.67-.64-.23-.21-.46-.42-.69-.63-.23-.21-.46-.41-.7-.62-.24-.2-.47-.41-.71-.6-.24-.2-.48-.4-.72-.59-.24-.2-.49-.39-.73-.58-.25-.19-.5-.38-.75-.57s-.5-.37-.76-.55c-.25-.18-.51-.36-.77-.54-.26-.18-.52-.35-.78-.53-.26-.17-.53-.35-.79-.51-.27-.17-.53-.34-.8-.5-.27-.16-.54-.33-.81-.49-.27-.16-.55-.32-.82-.47-.28-.16-.55-.31-.84-.46-.28-.15-.56-.3-.85-.44-.28-.15-.57-.29-.86-.43-.29-.14-.58-.28-.87-.41-.29-.14-.58-.27-.88-.4-.29-.13-.59-.26-.89-.38-.06-.02-.12-.05-.17-.08-.06-.03-.12-.05-.17-.08-.06-.03-.11-.06-.17-.08-.06-.03-.11-.06-.17-.09-.05-.03-.11-.06-.16-.09-.05-.03-.11-.06-.16-.1-.05-.03-.1-.07-.16-.1-.05-.03-.1-.07-.15-.1-.05-.03-.1-.07-.15-.11-.05-.04-.1-.07-.15-.11-.05-.04-.1-.07-.14-.11-.05-.04-.09-.08-.14-.12-.05-.04-.09-.08-.14-.12s-.09-.08-.13-.12c-.04-.04-.09-.08-.13-.12-.04-.04-.08-.08-.13-.13-.04-.04-.08-.09-.12-.13s-.08-.09-.12-.13c-.04-.04-.08-.09-.12-.14-.04-.05-.08-.09-.11-.14-.04-.05-.07-.09-.11-.14-.04-.05-.07-.1-.11-.14-.03-.05-.07-.1-.1-.15-.03-.05-.07-.1-.1-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.08-.16-.03-.05-.05-.11-.08-.16-.03-.05-.05-.11-.08-.16-.02-.05-.05-.11-.07-.16-.02-.05-.05-.11-.07-.16s-.04-.11-.06-.16c-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.05-.17-.02-.06-.03-.11-.05-.17-.02-.06-.03-.11-.04-.17-.01-.06-.03-.12-.04-.17-.01-.06-.02-.12-.04-.17-.01-.06-.02-.12-.03-.17-.01-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18s-.01-.12-.02-.18c0-.06,0-.12-.01-.18,0-.06,0-.12,0-.18,0-.06,0-.12,0-.18s0-.12,0-.18,0-.12,0-.18,0-.12.01-.18c0-.06,0-.12.02-.18s.01-.12.02-.18c0-.06.02-.12.02-.18,0-.06.02-.12.03-.18.01-.06.02-.12.03-.18s.02-.12.04-.18c.01-.06.03-.12.04-.18.02-.06.03-.12.05-.18.02-.06.03-.12.05-.18.02-.06.04-.12.06-.18.02-.06.04-.12.06-.18.02-.06.04-.12.07-.18.02-.06.05-.12.07-.18.02-.06.05-.12.08-.17.03-.06.05-.11.08-.17.03-.06.06-.11.08-.17.03-.06.06-.11.09-.17.03-.05.06-.11.09-.16.03-.05.06-.11.1-.16.03-.05.07-.1.1-.16.03-.05.07-.1.1-.15.03-.05.07-.1.11-.15s.07-.1.11-.15c.04-.05.07-.1.11-.14.04-.05.08-.09.12-.14.04-.05.08-.09.12-.14.04-.05.08-.09.12-.13.04-.04.08-.09.12-.13.04-.04.08-.08.13-.13.04-.04.09-.08.13-.12s.09-.08.13-.12c.04-.04.09-.08.14-.12.05-.04.09-.08.14-.11.05-.04.09-.07.14-.11.05-.04.1-.07.14-.11s.1-.07.15-.1c.05-.03.1-.07.15-.1.05-.03.1-.06.15-.1.05-.03.1-.06.15-.09.05-.03.1-.06.15-.09.05-.03.1-.06.16-.08.05-.03.11-.05.16-.08.05-.03.11-.05.16-.08.05-.02.11-.05.16-.07.05-.02.11-.05.16-.07.05-.02.11-.04.16-.06.06-.02.11-.04.17-.06s.11-.04.17-.06c.06-.02.11-.04.17-.05.06-.02.11-.03.17-.05s.11-.03.17-.04c.06-.01.12-.03.17-.04.06-.01.12-.02.17-.04s.12-.02.17-.03.12-.02.18-.03c.06,0,.12-.02.18-.02.06,0,.12-.01.18-.02.06,0,.12-.01.18-.02.06,0,.12,0,.18-.01.06,0,.12,0,.18,0s.12,0,.18,0,.12,0,.18,0c.06,0,.12,0,.18,0,.06,0,.12,0,.18.01.06,0,.12,0,.18.02.06,0,.12.01.18.02.06,0,.12.02.18.02.06,0,.12.02.18.03.06.01.12.02.18.03s.12.02.18.04c.06.01.12.03.18.04.06.02.12.03.18.05.06.02.12.03.18.05.06.02.12.04.18.06.06.02.12.04.18.06.06.02.12.04.18.07.06.02.12.05.18.07.38.16.76.33,1.14.5.38.17.75.34,1.13.51.37.17.75.35,1.12.53.37.18.74.37,1.1.55.37.19.73.38,1.09.57.36.19.72.39,1.08.59.36.2.71.4,1.06.61.35.21.7.41,1.05.63.35.21.69.43,1.03.64.34.22.68.44,1.02.66.34.22.67.45,1.01.68.33.23.66.46.99.7s.65.47.98.71c.32.24.64.48.96.73.32.25.63.49.95.75.31.25.62.51.93.76.31.26.61.52.92.78.3.26.6.53.9.79.3.27.59.54.88.81.29.27.58.55.87.82.29.28.57.56.85.84.28.28.56.57.84.85.28.29.55.58.82.87.27.29.54.59.8.88.27.3.53.6.79.9.26.3.52.6.77.91.25.31.51.61.75.92s.49.62.74.94c.24.31.48.63.72.95.24.32.47.64.7.96.23.32.46.65.68.97.23.33.45.66.67.99.22.33.44.66.65,1,.21.33.42.67.63,1.01.21.34.41.68.61,1.02.2.34.4.69.59,1.03.19.35.39.69.58,1.04.19.35.37.7.56,1.05.18.35.36.71.54,1.06.18.36.35.71.52,1.07.17.36.34.72.5,1.08.16.36.32.73.48,1.09.16.37.31.73.46,1.1.15.37.3.74.44,1.11.14.37.28.75.42,1.12.14.38.27.75.4,1.13s.26.76.38,1.14c.12.38.24.76.36,1.15.12.38.23.77.34,1.16s.22.77.32,1.16c.1.39.2.78.3,1.17s.19.78.28,1.18.17.79.26,1.18.16.79.23,1.19c.07.4.15.8.21,1.2.07.4.13.8.19,1.2s.12.81.17,1.21c.05.4.1.81.15,1.22.05.41.09.81.13,1.22.04.41.07.82.1,1.23.03.41.06.82.08,1.23.02.41.04.82.06,1.24.02.41.03.83.03,1.24,0,.41.01.83.01,1.24s0,.83-.01,1.24c0,.41-.02.83-.03,1.24-.02.41-.03.82-.06,1.24-.02.41-.05.82-.08,1.23-.03.41-.06.82-.1,1.23-.04.41-.08.82-.13,1.22-.05.41-.09.81-.15,1.22s-.11.81-.17,1.21c-.06.4-.12.8-.19,1.2-.07.4-.14.8-.21,1.2-.07.4-.15.8-.23,1.19s-.17.79-.26,1.18c-.09.39-.18.79-.28,1.18-.1.39-.2.78-.3,1.17-.1.39-.21.78-.32,1.16s-.22.77-.34,1.16c-.12.38-.24.77-.36,1.15-.12.38-.25.76-.38,1.14s-.26.76-.4,1.13c-.14.38-.28.75-.42,1.12-.14.37-.29.74-.44,1.11-.15.37-.3.74-.46,1.1-.16.37-.32.73-.48,1.09-.16.36-.33.72-.5,1.08-.17.36-.34.72-.52,1.07s-.36.71-.54,1.06c-.18.35-.37.7-.56,1.05-.19.35-.38.7-.58,1.04-.19.35-.39.69-.59,1.03-.2.34-.4.68-.61,1.02-.21.34-.42.68-.63,1.01-.21.33-.43.67-.65,1-.22.33-.44.66-.67.99-.23.33-.45.65-.68.97-.23.32-.47.64-.7.96-.24.32-.48.64-.72.95-.24.31-.49.63-.74.94s-.5.62-.75.92c-.25.31-.51.61-.77.91-.26.3-.52.6-.79.9-.27.3-.53.59-.8.88-.27.29-.54.58-.82.87-.28.29-.56.57-.84.85s-.57.56-.85.84c-.29.28-.58.55-.87.82s-.59.54-.88.81c-.3.27-.6.53-.9.79-.3.26-.61.52-.92.78-.31.26-.62.51-.93.76s-.63.5-.95.75c-.32.25-.64.49-.96.73-.32.24-.65.48-.98.71s-.66.47-.99.7c-.33.23-.67.46-1.01.68-.34.22-.68.44-1.02.66-.34.22-.69.43-1.03.64-.35.21-.7.42-1.05.63-.35.21-.71.41-1.06.61-.36.2-.71.4-1.08.59-.36.19-.72.38-1.09.57-.37.19-.73.37-1.1.55-.37.18-.74.36-1.12.53-.37.17-.75.35-1.13.51-.38.17-.76.33-1.14.5-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02s-.03.01-.04.02c-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02s-.03.01-.04.02-.03,0-.04.01h-.04s-.03.02-.04.03c-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01s-.03,0-.04.01h-.04s-.03.02-.04.03c-.02,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.04.01-.02,0-.03,0-.05.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.05.01-.02,0-.03,0-.05.01-.01,0-.03,0-.05.01-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0h-.05s-.03.01-.05.02c-.01,0-.03,0-.05,0s-.03,0-.05,0c-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0s-.03,0-.05,0c-.02,0-.03,0-.05,0h-.05s-.03,0-.05.01c-.02,0-.03,0-.05,0h-.05s-.03,0-.05.01-.03,0-.05,0c-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0s-.03,0-.04,0c-.02,0-.03,0-.04,0h-.04Z"/> <path d="M303.79,301.41s-.09,0-.13,0c-.04,0-.09,0-.13,0-.04,0-.09,0-.13,0s-.09,0-.13,0c-.04,0-.09,0-.13-.01-.04,0-.09,0-.13-.01-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.01-.13-.02-.04,0-.09-.02-.13-.03-.04,0-.09-.02-.13-.03-.04,0-.09-.02-.13-.03-.04-.01-.09-.02-.13-.03-.04-.01-.09-.02-.13-.03s-.09-.02-.13-.04-.08-.03-.13-.04c-.04-.01-.08-.03-.13-.04-.04-.01-.08-.03-.13-.04s-.08-.03-.12-.05-.08-.03-.12-.05c-.04-.02-.08-.03-.12-.05s-.08-.03-.12-.05c-.04-.02-.08-.04-.12-.05-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06-.04-.02-.08-.04-.12-.06s-.08-.04-.12-.06c-.04-.02-.08-.04-.12-.07s-.08-.04-.11-.07c-.04-.02-.08-.05-.11-.07-.04-.02-.07-.05-.11-.07-.04-.02-.07-.05-.11-.07-.04-.02-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.04-.03-.07-.05-.11-.08-.03-.03-.07-.06-.1-.08-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.07-.06-.1-.09-.03-.03-.06-.06-.1-.09s-.06-.06-.1-.1c-.03-.03-.06-.06-.09-.1-.03-.03-.06-.07-.09-.1-.03-.03-.06-.07-.09-.1-.03-.03-.06-.07-.09-.1-.03-.03-.06-.07-.09-.1-.03-.04-.06-.07-.09-.11-.03-.04-.06-.07-.08-.11-.03-.04-.05-.07-.08-.11-.03-.04-.05-.07-.08-.11-.03-.04-.05-.08-.08-.11-.03-.04-.05-.08-.08-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.05-.08-.07-.12-.02-.04-.04-.08-.07-.12-.02-.04-.04-.08-.06-.13-.02-.04-.04-.08-.06-.13-.02-.04-.04-.09-.06-.13-.02-.04-.04-.09-.06-.13-.02-.06-.05-.12-.07-.18s-.05-.12-.07-.18c-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.06-.18-.02-.06-.04-.12-.05-.18-.02-.06-.03-.12-.05-.18-.02-.06-.03-.12-.04-.18s-.03-.12-.04-.18c-.01-.06-.02-.12-.03-.18-.01-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06,0-.12-.01-.18,0-.06,0-.12,0-.18s0-.12,0-.18,0-.12,0-.18c0-.06,0-.12,0-.18,0-.06,0-.12.01-.18s0-.12.02-.18c0-.06.01-.12.02-.18,0-.06.02-.12.02-.18,0-.06.02-.12.03-.18.01-.06.02-.12.03-.17.01-.06.02-.12.04-.17.01-.06.03-.12.04-.17.01-.06.03-.11.04-.17.02-.06.03-.11.05-.17.02-.06.03-.11.05-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.17.02-.06.04-.11.06-.16.02-.05.05-.11.07-.16.02-.05.05-.11.07-.16.02-.05.05-.11.08-.16.03-.05.05-.11.08-.16.03-.05.06-.1.08-.16.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.06-.1.09-.15.03-.05.07-.1.1-.15.03-.05.07-.1.1-.15.03-.05.07-.1.11-.14.04-.05.07-.09.11-.14s.07-.09.11-.14c.04-.05.08-.09.12-.14.04-.04.08-.09.12-.13.04-.04.08-.09.12-.13.04-.04.08-.09.13-.13.04-.04.09-.08.13-.12.04-.04.09-.08.13-.12.04-.04.09-.08.14-.12.05-.04.09-.08.14-.12.05-.04.1-.08.14-.11.05-.04.1-.07.15-.11.05-.04.1-.07.15-.11.05-.03.1-.07.15-.1.05-.03.1-.07.16-.1.05-.03.11-.06.16-.1.05-.03.11-.06.16-.09.05-.03.11-.06.17-.09.06-.03.11-.06.17-.08.06-.03.11-.05.17-.08.06-.03.12-.05.17-.08.11-.05.22-.09.32-.14.11-.05.21-.1.32-.15.11-.05.21-.1.32-.15.1-.05.21-.1.31-.16.1-.05.21-.11.31-.16.1-.05.2-.11.3-.17.1-.06.2-.11.3-.17.1-.06.2-.12.3-.18.1-.06.2-.12.29-.18.1-.06.19-.12.29-.19.1-.06.19-.13.28-.19.09-.06.19-.13.28-.2s.19-.13.28-.2c.09-.07.18-.14.27-.21.09-.07.18-.14.27-.21.09-.07.18-.14.26-.22.09-.07.17-.15.26-.22.09-.07.17-.15.25-.22s.17-.15.25-.23c.08-.08.16-.16.25-.23.08-.08.16-.16.24-.24s.16-.16.24-.24c.08-.08.16-.16.23-.25s.15-.17.23-.25c.08-.08.15-.17.22-.25.07-.09.15-.17.22-.26.07-.09.14-.17.21-.26.07-.09.14-.18.21-.27.07-.09.14-.18.2-.27.07-.09.13-.18.2-.27.07-.09.13-.18.19-.28.06-.09.13-.19.19-.28.06-.09.12-.19.18-.28.06-.09.12-.19.18-.29.06-.1.12-.19.17-.29.06-.1.11-.19.17-.29s.11-.2.16-.3c.05-.1.11-.2.16-.3s.1-.2.15-.3c.05-.1.1-.2.15-.3.05-.1.1-.2.14-.31.05-.1.09-.21.14-.31.04-.1.09-.21.13-.31.04-.1.08-.21.12-.32.04-.11.08-.21.12-.32.04-.11.08-.21.11-.32.04-.11.07-.21.11-.32.03-.11.07-.22.1-.33s.07-.22.1-.33c.03-.11.06-.22.09-.33.03-.11.06-.22.08-.33.03-.11.05-.22.08-.33.03-.11.05-.22.07-.34s.05-.22.07-.34c.02-.11.04-.23.06-.34.02-.11.04-.23.05-.34.02-.11.03-.23.05-.34.01-.11.03-.23.04-.34.01-.12.02-.23.04-.35.01-.12.02-.23.03-.35,0-.12.02-.23.02-.35,0-.12.01-.23.02-.35s0-.23,0-.35c0-.12,0-.24,0-.35s0-.24,0-.35c0-.12,0-.23,0-.35,0-.12,0-.23-.02-.35,0-.12-.01-.23-.02-.35,0-.12-.02-.23-.03-.35-.01-.12-.02-.23-.04-.35-.01-.12-.03-.23-.04-.34-.02-.11-.03-.23-.05-.34-.02-.11-.04-.23-.05-.34-.02-.11-.04-.23-.06-.34-.02-.11-.04-.23-.07-.34-.02-.11-.05-.22-.07-.34s-.05-.22-.08-.33c-.03-.11-.06-.22-.08-.33-.03-.11-.06-.22-.09-.33-.03-.11-.06-.22-.1-.33-.03-.11-.07-.22-.1-.33-.04-.11-.07-.22-.11-.32-.04-.11-.07-.21-.11-.32-.04-.11-.08-.21-.12-.32-.04-.11-.08-.21-.12-.32-.04-.1-.09-.21-.13-.31-.04-.1-.09-.21-.14-.31-.05-.1-.09-.21-.14-.31-.05-.1-.1-.2-.15-.3s-.1-.2-.15-.3c-.05-.1-.1-.2-.16-.3-.05-.1-.11-.2-.16-.3-.06-.1-.11-.2-.17-.29s-.11-.19-.17-.29c-.06-.1-.12-.19-.18-.29-.06-.09-.12-.19-.18-.28-.06-.09-.12-.19-.19-.28-.06-.09-.13-.18-.19-.28-.07-.09-.13-.18-.2-.27-.07-.09-.14-.18-.2-.27-.07-.09-.14-.18-.21-.27-.07-.09-.14-.18-.21-.26-.07-.09-.14-.17-.22-.26-.07-.09-.15-.17-.22-.25-.08-.08-.15-.17-.23-.25s-.15-.16-.23-.25c-.08-.08-.16-.16-.24-.24-.08-.08-.16-.16-.24-.24-.08-.08-.16-.16-.25-.23-.08-.08-.17-.15-.25-.23s-.17-.15-.25-.23c-.09-.07-.17-.15-.26-.22-.09-.07-.18-.14-.26-.22-.09-.07-.18-.14-.27-.21-.09-.07-.18-.14-.27-.21-.09-.07-.18-.14-.28-.2s-.19-.13-.28-.2c-.09-.07-.19-.13-.28-.19-.1-.06-.19-.13-.29-.19-.1-.06-.19-.12-.29-.18s-.2-.12-.3-.18c-.1-.06-.2-.12-.3-.17-.1-.06-.2-.11-.3-.17-.1-.05-.21-.11-.31-.16-.1-.05-.21-.11-.31-.16-.1-.05-.21-.1-.32-.15-.11-.05-.21-.1-.32-.15-.11-.05-.22-.09-.32-.14-.06-.02-.12-.05-.17-.08-.06-.03-.11-.05-.17-.08-.06-.03-.11-.06-.17-.08-.06-.03-.11-.06-.17-.09-.05-.03-.11-.06-.16-.09-.05-.03-.11-.06-.16-.1-.05-.03-.1-.07-.16-.1-.05-.03-.1-.07-.15-.1-.05-.03-.1-.07-.15-.11-.05-.04-.1-.07-.15-.11-.05-.04-.1-.07-.14-.11-.05-.04-.09-.08-.14-.12-.05-.04-.09-.08-.14-.12-.05-.04-.09-.08-.13-.12-.04-.04-.09-.08-.13-.12-.04-.04-.09-.08-.13-.13-.04-.04-.08-.09-.12-.13-.04-.04-.08-.09-.12-.13-.04-.04-.08-.09-.12-.14-.04-.05-.08-.09-.11-.14-.04-.05-.07-.09-.11-.14-.04-.05-.07-.09-.11-.14-.03-.05-.07-.1-.1-.15-.03-.05-.07-.1-.1-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.09-.15-.03-.05-.06-.1-.08-.16-.03-.05-.05-.1-.08-.16-.03-.05-.05-.11-.08-.16-.02-.05-.05-.11-.07-.16s-.05-.11-.07-.16c-.02-.05-.04-.11-.06-.16-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.06-.17-.02-.06-.04-.11-.05-.17-.02-.06-.03-.11-.05-.17-.02-.06-.03-.11-.04-.17-.01-.06-.03-.12-.04-.17-.01-.06-.02-.12-.04-.17-.01-.06-.02-.12-.03-.17-.01-.06-.02-.12-.03-.18,0-.06-.02-.12-.02-.18,0-.06-.01-.12-.02-.18,0-.06-.01-.12-.02-.18s0-.12-.01-.18c0-.06,0-.12,0-.18,0-.06,0-.12,0-.18s0-.12,0-.18c0-.06,0-.12,0-.18,0-.06,0-.12.01-.18,0-.06,0-.12.02-.18,0-.06.01-.12.02-.18,0-.06.02-.12.02-.18,0-.06.02-.12.03-.18.01-.06.02-.12.03-.18.01-.06.02-.12.04-.18s.03-.12.04-.18c.02-.06.03-.12.05-.18.02-.06.03-.12.05-.18.02-.06.04-.12.06-.18s.04-.12.06-.18c.02-.06.04-.12.07-.18.02-.06.05-.12.07-.18.02-.06.05-.12.08-.17.03-.06.05-.12.08-.17.03-.06.06-.11.08-.17.03-.06.06-.11.09-.17.03-.05.06-.11.09-.16.03-.05.06-.11.1-.16.03-.05.07-.1.1-.16s.07-.1.1-.15c.03-.05.07-.1.11-.15.04-.05.07-.1.11-.15.04-.05.07-.1.11-.14.04-.05.08-.09.12-.14.04-.05.08-.09.12-.14.04-.05.08-.09.12-.13.04-.04.08-.09.12-.13.04-.04.08-.09.13-.13.04-.04.09-.08.13-.12.04-.04.09-.08.13-.12.04-.04.09-.08.14-.12s.09-.08.14-.11c.05-.04.09-.07.14-.11.05-.04.1-.07.14-.11.05-.03.1-.07.15-.1.05-.03.1-.07.15-.1.05-.03.1-.06.15-.1.05-.03.1-.06.15-.09.05-.03.1-.06.15-.09.05-.03.1-.06.16-.08.05-.03.1-.05.16-.08.05-.03.11-.05.16-.08.05-.02.11-.05.16-.07.05-.02.11-.05.16-.07s.11-.04.16-.06c.06-.02.11-.04.17-.06.06-.02.11-.04.17-.06.06-.02.11-.04.17-.05s.11-.03.17-.05c.06-.02.11-.03.17-.04.06-.01.11-.03.17-.04.06-.01.12-.02.17-.04.06-.01.12-.02.17-.03.06-.01.12-.02.18-.03.06,0,.12-.02.18-.02.06,0,.12-.01.18-.02.06,0,.12-.01.18-.02.06,0,.12,0,.18-.01.06,0,.12,0,.18,0,.06,0,.12,0,.18,0,.06,0,.12,0,.18,0s.12,0,.18,0c.06,0,.12,0,.18.01.06,0,.12,0,.18.02.06,0,.12.01.18.02.06,0,.12.02.18.02.06,0,.12.02.18.03s.12.02.18.03c.06.01.12.03.18.04.06.01.12.03.18.04.06.02.12.03.18.05.06.02.12.03.18.05.06.02.12.04.18.06s.12.04.18.06.12.04.18.07c.06.02.12.05.18.07.19.08.39.17.58.25.19.09.38.17.57.26.19.09.38.18.57.27.19.09.37.18.56.28.19.09.37.19.55.29.18.1.36.2.55.3.18.1.36.2.54.31.18.1.36.21.53.32.18.11.35.22.52.33.17.11.35.22.52.34.17.11.34.23.51.34.17.12.34.23.5.35.17.12.33.24.5.36.16.12.33.25.49.37.16.12.32.25.48.38.16.13.32.26.47.39.16.13.31.26.46.39.15.13.31.27.46.4.15.14.3.27.45.41.15.14.3.28.44.42.15.14.29.28.43.43s.28.29.42.43c.14.15.28.29.42.44.14.15.27.3.41.45s.27.3.4.45.26.31.39.46c.13.15.26.31.38.47.13.16.25.32.37.47.12.16.24.32.36.48.12.16.24.32.36.49.12.16.23.33.35.49.11.17.23.33.34.5.11.17.22.34.33.51.11.17.21.34.32.51.1.17.21.34.31.52.1.17.2.35.3.52.1.18.2.35.29.53.1.18.19.36.28.53.09.18.18.36.27.54.09.18.18.36.26.54.09.18.17.37.25.55s.16.37.24.55c.08.19.16.37.23.56.08.19.15.38.22.56.07.19.14.38.21.57.07.19.14.38.2.57.07.19.13.38.19.58.06.19.12.39.18.58.06.19.12.39.17.59.06.2.11.39.16.59.05.2.1.39.15.59.05.2.1.4.14.6.04.2.09.4.13.6.04.2.08.4.12.6.04.2.07.4.11.61.03.2.07.41.1.61s.06.41.09.61c.03.21.05.41.07.62.02.21.04.41.06.62.02.21.04.41.05.62s.03.42.04.62c.01.21.02.42.03.63,0,.21.01.42.02.63,0,.21,0,.42,0,.63s0,.42,0,.63c0,.21,0,.42-.02.63,0,.21-.02.42-.03.63-.01.21-.03.42-.04.62s-.03.41-.05.62c-.02.21-.04.41-.06.62-.02.21-.05.41-.07.62-.03.21-.06.41-.09.61s-.06.41-.1.61c-.03.2-.07.41-.11.61-.04.2-.08.4-.12.6-.04.2-.08.4-.13.6-.04.2-.09.4-.14.6-.05.2-.1.4-.15.59-.05.2-.11.39-.16.59-.06.2-.11.39-.17.59-.06.19-.12.39-.18.58-.06.19-.13.39-.19.58-.07.19-.13.38-.2.57-.07.19-.14.38-.21.57-.07.19-.15.38-.22.56-.08.19-.15.37-.23.56-.08.19-.16.37-.24.55-.08.18-.17.37-.25.55-.09.18-.17.36-.26.54-.09.18-.18.36-.27.54-.09.18-.19.36-.28.53-.1.18-.19.35-.29.53-.1.18-.2.35-.3.52-.1.17-.21.35-.31.52-.11.17-.21.34-.32.51-.11.17-.22.34-.33.51-.11.17-.22.33-.34.5-.11.17-.23.33-.35.49-.12.16-.24.33-.36.49-.12.16-.24.32-.36.48-.12.16-.25.32-.37.47-.13.16-.25.31-.38.47s-.26.31-.39.46c-.13.15-.26.3-.4.45-.13.15-.27.3-.41.45-.14.15-.28.29-.42.44-.14.15-.28.29-.42.43s-.29.28-.43.43c-.15.14-.29.28-.44.42-.15.14-.3.27-.45.41-.15.14-.3.27-.46.4-.15.13-.31.26-.46.39-.16.13-.31.26-.47.39-.16.13-.32.25-.48.38-.16.12-.32.25-.49.37-.16.12-.33.24-.5.36-.17.12-.33.24-.5.35-.17.12-.34.23-.51.34-.17.11-.34.23-.52.34-.17.11-.35.22-.52.33-.18.11-.35.21-.53.32-.18.1-.36.21-.54.31-.18.1-.36.2-.55.3-.18.1-.37.19-.55.29-.19.09-.37.19-.56.28-.19.09-.38.18-.57.27s-.38.18-.57.26c-.19.09-.38.17-.58.25-.01,0-.03.01-.04.02l-.04.02s-.03.01-.04.02c-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02-.01,0-.03.01-.04.02s-.03,0-.04.01c-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01s-.03,0-.04.01h-.04s-.03.02-.04.03c-.01,0-.03,0-.04.01s-.03,0-.04.01c-.02,0-.03,0-.04.01-.01,0-.03,0-.04.01-.01,0-.03,0-.04.01-.02,0-.03,0-.04.01-.02,0-.03,0-.04.01-.02,0-.03,0-.04.01-.02,0-.03,0-.04.01-.02,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.02,0-.03,0-.05,0-.01,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0-.02,0-.03,0-.05,0-.01,0-.03,0-.04,0h-.04Z"/>';
+    const SOUND_ICON_OFF = '<g> <polygon points="154.19 270 156.24 271.53 158.29 273.06 160.35 274.58 162.4 276.11 164.45 277.64 166.5 279.17 168.55 280.7 170.6 282.22 172.65 283.75 174.7 285.28 176.75 286.81 178.81 288.34 180.86 289.87 182.91 291.39 184.96 292.92 187.01 294.45 189.06 295.98 191.11 297.51 193.16 299.03 195.21 300.56 197.27 302.09 199.32 303.62 201.37 305.15 203.42 306.67 205.47 308.2 207.52 309.73 209.57 311.26 211.62 312.79 213.67 314.32 215.73 315.84 217.78 317.37 219.83 318.9 221.88 320.43 223.93 321.96 225.98 323.48 228.03 325.01 230.08 326.54 232.13 328.07 234.19 329.6 236.24 331.12 238.29 332.65 240.34 334.18 242.39 335.71 244.44 337.24 246.49 338.77 248.54 340.29 250.6 341.82 252.65 343.35 254.7 344.88 256.75 346.41 258.8 347.93 260.85 349.46 262.9 350.99 264.95 352.52 267 354.05 269.06 355.57 271.11 357.1 273.16 358.63 275.21 360.16 277.26 361.69 279.31 363.21 281.36 364.74 283.41 366.27 285.46 367.8 285.46 364.74 285.46 361.69 285.46 358.63 285.46 355.57 285.46 352.52 285.46 349.46 285.46 346.41 285.46 343.35 285.46 340.29 285.46 337.24 285.46 334.18 285.46 331.12 285.46 328.07 285.46 325.01 285.46 321.96 285.46 318.9 285.46 315.84 285.46 312.79 285.46 309.73 285.46 306.67 285.46 303.62 285.46 300.56 285.46 297.51 285.46 294.45 285.46 291.39 285.46 288.34 285.46 285.28 285.46 282.22 285.46 279.17 285.46 276.11 285.46 273.06 285.46 270 285.46 266.94 285.46 263.89 285.46 260.83 285.46 257.78 285.46 254.72 285.46 251.66 285.46 248.61 285.46 245.55 285.46 242.49 285.46 239.44 285.46 236.38 285.46 233.33 285.46 230.27 285.46 227.21 285.46 224.16 285.46 221.1 285.46 218.04 285.46 214.99 285.46 211.93 285.46 208.88 285.46 205.82 285.46 202.76 285.46 199.71 285.46 196.65 285.46 193.59 285.46 190.54 285.46 187.48 285.46 184.43 285.46 181.37 285.46 178.31 285.46 175.26 285.46 172.2 283.41 173.73 281.36 175.26 279.31 176.79 277.26 178.31 275.21 179.84 273.16 181.37 271.11 182.9 269.06 184.43 267 185.95 264.95 187.48 262.9 189.01 260.85 190.54 258.8 192.07 256.75 193.59 254.7 195.12 252.65 196.65 250.6 198.18 248.54 199.71 246.49 201.24 244.44 202.76 242.39 204.29 240.34 205.82 238.29 207.35 236.24 208.88 234.19 210.4 232.13 211.93 230.08 213.46 228.03 214.99 225.98 216.52 223.93 218.04 221.88 219.57 219.83 221.1 217.78 222.63 215.73 224.16 213.67 225.68 211.62 227.21 209.57 228.74 207.52 230.27 205.47 231.8 203.42 233.33 201.37 234.85 199.32 236.38 197.27 237.91 195.21 239.44 193.16 240.97 191.11 242.49 189.06 244.02 187.01 245.55 184.96 247.08 182.91 248.61 180.86 250.13 178.81 251.66 176.75 253.19 174.7 254.72 172.65 256.25 170.6 257.78 168.55 259.3 166.5 260.83 164.45 262.36 162.4 263.89 160.35 265.42 158.29 266.94 156.24 268.47 154.19 270"/> <polygon points="211.7 312.35 210.8 312.35 209.9 312.35 209 312.35 208.1 312.35 207.2 312.35 206.31 312.35 205.41 312.35 204.51 312.35 203.61 312.35 202.71 312.35 201.81 312.35 200.91 312.35 200.02 312.35 199.12 312.35 198.22 312.35 197.32 312.35 196.42 312.35 195.52 312.35 194.62 312.35 193.73 312.35 192.83 312.35 191.93 312.35 191.03 312.35 190.13 312.35 189.23 312.35 188.34 312.35 187.44 312.35 186.54 312.35 185.64 312.35 184.74 312.35 183.84 312.35 182.94 312.35 182.05 312.35 181.15 312.35 180.25 312.35 179.35 312.35 178.45 312.35 177.55 312.35 176.65 312.35 175.76 312.35 174.86 312.35 173.96 312.35 173.06 312.35 172.16 312.35 171.26 312.35 170.36 312.35 169.47 312.35 168.57 312.35 167.67 312.35 166.77 312.35 165.87 312.35 164.97 312.35 164.08 312.35 163.18 312.35 162.28 312.35 161.38 312.35 160.48 312.35 159.58 312.35 158.68 312.35 157.79 312.35 156.89 312.35 155.99 312.35 155.09 312.35 154.19 312.35 154.19 311.03 154.19 309.71 154.19 308.38 154.19 307.06 154.19 305.74 154.19 304.41 154.19 303.09 154.19 301.76 154.19 300.44 154.19 299.12 154.19 297.79 154.19 296.47 154.19 295.15 154.19 293.82 154.19 292.5 154.19 291.18 154.19 289.85 154.19 288.53 154.19 287.21 154.19 285.88 154.19 284.56 154.19 283.24 154.19 281.91 154.19 280.59 154.19 279.26 154.19 277.94 154.19 276.62 154.19 275.29 154.19 273.97 154.19 272.65 154.19 271.32 154.19 270 154.19 268.68 154.19 267.35 154.19 266.03 154.19 264.71 154.19 263.38 154.19 262.06 154.19 260.74 154.19 259.41 154.19 258.09 154.19 256.76 154.19 255.44 154.19 254.12 154.19 252.79 154.19 251.47 154.19 250.15 154.19 248.82 154.19 247.5 154.19 246.18 154.19 244.85 154.19 243.53 154.19 242.21 154.19 240.88 154.19 239.56 154.19 238.24 154.19 236.91 154.19 235.59 154.19 234.26 154.19 232.94 154.19 231.62 154.19 230.29 154.19 228.97 154.19 227.65 155.09 227.65 155.99 227.65 156.89 227.65 157.79 227.65 158.68 227.65 159.58 227.65 160.48 227.65 161.38 227.65 162.28 227.65 163.18 227.65 164.08 227.65 164.97 227.65 165.87 227.65 166.77 227.65 167.67 227.65 168.57 227.65 169.47 227.65 170.36 227.65 171.26 227.65 172.16 227.65 173.06 227.65 173.96 227.65 174.86 227.65 175.76 227.65 176.65 227.65 177.55 227.65 178.45 227.65 179.35 227.65 180.25 227.65 181.15 227.65 182.05 227.65 182.94 227.65 183.84 227.65 184.74 227.65 185.64 227.65 186.54 227.65 187.44 227.65 188.34 227.65 189.23 227.65 190.13 227.65 191.03 227.65 191.93 227.65 192.83 227.65 193.73 227.65 194.62 227.65 195.52 227.65 196.42 227.65 197.32 227.65 198.22 227.65 199.12 227.65 200.02 227.65 200.91 227.65 201.81 227.65 202.71 227.65 203.61 227.65 204.51 227.65 205.41 227.65 206.31 227.65 207.2 227.65 208.1 227.65 209 227.65 209.9 227.65 210.8 227.65 211.7 227.65 211.7 228.97 211.7 230.29 211.7 231.62 211.7 232.94 211.7 234.26 211.7 235.59 211.7 236.91 211.7 238.24 211.7 239.56 211.7 240.88 211.7 242.21 211.7 243.53 211.7 244.85 211.7 246.18 211.7 247.5 211.7 248.82 211.7 250.15 211.7 251.47 211.7 252.79 211.7 254.12 211.7 255.44 211.7 256.76 211.7 258.09 211.7 259.41 211.7 260.74 211.7 262.06 211.7 263.38 211.7 264.71 211.7 266.03 211.7 267.35 211.7 268.68 211.7 270 211.7 271.32 211.7 272.65 211.7 273.97 211.7 275.29 211.7 276.62 211.7 277.94 211.7 279.26 211.7 280.59 211.7 281.91 211.7 283.24 211.7 284.56 211.7 285.88 211.7 287.21 211.7 288.53 211.7 289.85 211.7 291.18 211.7 292.5 211.7 293.82 211.7 295.15 211.7 296.47 211.7 297.79 211.7 299.12 211.7 300.44 211.7 301.76 211.7 303.09 211.7 304.41 211.7 305.74 211.7 307.06 211.7 308.38 211.7 309.71 211.7 311.03 211.7 312.35"/> </g> <polygon points="326.31 307.05 326.08 306.82 325.85 306.6 325.62 306.37 325.4 306.14 325.17 305.91 324.94 305.68 324.71 305.46 324.48 305.23 324.25 305 324.03 304.77 323.8 304.54 323.57 304.31 323.34 304.09 323.11 303.86 322.89 303.63 322.66 303.4 322.43 303.17 322.2 302.94 321.97 302.72 321.74 302.49 321.52 302.26 321.29 302.03 321.06 301.8 320.83 301.57 320.6 301.35 320.37 301.12 320.15 300.89 319.92 300.66 319.69 300.43 319.46 300.21 319.23 299.98 319.01 299.75 318.78 299.52 318.55 299.29 318.32 299.06 318.09 298.84 317.86 298.61 317.64 298.38 317.41 298.15 317.18 297.92 316.95 297.69 316.72 297.47 316.49 297.24 316.27 297.01 316.04 296.78 315.81 296.55 315.58 296.33 315.35 296.1 315.12 295.87 314.9 295.64 314.67 295.41 314.44 295.18 314.21 294.96 313.98 294.73 313.76 294.5 313.53 294.27 313.3 294.04 313.07 293.81 312.84 293.59 312.61 293.36 312.39 293.13 312.16 292.9 311.93 292.67 311.7 292.44 312.63 291.52 313.56 290.59 314.49 289.66 315.42 288.73 316.35 287.8 317.28 286.87 318.21 285.94 319.14 285.01 320.07 284.08 321 283.15 321.93 282.22 322.86 281.29 323.79 280.36 324.72 279.43 325.65 278.5 326.58 277.57 327.51 276.64 328.43 275.71 329.36 274.78 330.29 273.85 331.22 272.92 332.15 271.99 333.08 271.06 334.01 270.13 334.94 269.2 335.87 268.27 336.8 267.34 337.73 266.41 338.66 265.49 339.59 264.56 340.52 263.63 341.45 262.7 342.38 261.77 343.31 260.84 344.24 259.91 345.17 258.98 346.1 258.05 347.03 257.12 347.96 256.19 348.89 255.26 349.82 254.33 350.75 253.4 351.68 252.47 352.61 251.54 353.54 250.61 354.47 249.68 355.39 248.75 356.32 247.82 357.25 246.89 358.18 245.96 359.11 245.03 360.04 244.1 360.97 243.17 361.9 242.24 362.83 241.31 363.76 240.38 364.69 239.45 365.62 238.52 366.55 237.6 367.48 236.67 368.41 235.74 369.34 234.81 370.27 233.88 371.2 232.95 371.43 233.18 371.66 233.4 371.88 233.63 372.11 233.86 372.34 234.09 372.57 234.32 372.8 234.54 373.03 234.77 373.25 235 373.48 235.23 373.71 235.46 373.94 235.69 374.17 235.91 374.39 236.14 374.62 236.37 374.85 236.6 375.08 236.83 375.31 237.06 375.54 237.28 375.76 237.51 375.99 237.74 376.22 237.97 376.45 238.2 376.68 238.43 376.91 238.65 377.13 238.88 377.36 239.11 377.59 239.34 377.82 239.57 378.05 239.79 378.27 240.02 378.5 240.25 378.73 240.48 378.96 240.71 379.19 240.94 379.42 241.16 379.64 241.39 379.87 241.62 380.1 241.85 380.33 242.08 380.56 242.31 380.79 242.53 381.01 242.76 381.24 242.99 381.47 243.22 381.7 243.45 381.93 243.67 382.16 243.9 382.38 244.13 382.61 244.36 382.84 244.59 383.07 244.82 383.3 245.04 383.52 245.27 383.75 245.5 383.98 245.73 384.21 245.96 384.44 246.19 384.67 246.41 384.89 246.64 385.12 246.87 385.35 247.1 385.58 247.33 385.81 247.56 384.88 248.48 383.95 249.41 383.02 250.34 382.09 251.27 381.16 252.2 380.23 253.13 379.3 254.06 378.37 254.99 377.44 255.92 376.51 256.85 375.58 257.78 374.65 258.71 373.72 259.64 372.79 260.57 371.86 261.5 370.93 262.43 370 263.36 369.07 264.29 368.14 265.22 367.21 266.15 366.28 267.08 365.35 268.01 364.42 268.94 363.5 269.87 362.57 270.8 361.64 271.73 360.71 272.66 359.78 273.59 358.85 274.52 357.92 275.44 356.99 276.37 356.06 277.3 355.13 278.23 354.2 279.16 353.27 280.09 352.34 281.02 351.41 281.95 350.48 282.88 349.55 283.81 348.62 284.74 347.69 285.67 346.76 286.6 345.83 287.53 344.9 288.46 343.97 289.39 343.04 290.32 342.11 291.25 341.18 292.18 340.25 293.11 339.32 294.04 338.39 294.97 337.47 295.9 336.54 296.83 335.61 297.76 334.68 298.69 333.75 299.62 332.82 300.55 331.89 301.48 330.96 302.4 330.03 303.33 329.1 304.26 328.17 305.19 327.24 306.12 326.31 307.05"/> <polygon points="371.2 307.05 370.27 306.12 369.34 305.19 368.41 304.26 367.48 303.33 366.55 302.4 365.62 301.48 364.69 300.55 363.76 299.62 362.83 298.69 361.9 297.76 360.97 296.83 360.04 295.9 359.11 294.97 358.18 294.04 357.25 293.11 356.32 292.18 355.39 291.25 354.47 290.32 353.54 289.39 352.61 288.46 351.68 287.53 350.75 286.6 349.82 285.67 348.89 284.74 347.96 283.81 347.03 282.88 346.1 281.95 345.17 281.02 344.24 280.09 343.31 279.16 342.38 278.23 341.45 277.3 340.52 276.37 339.59 275.44 338.66 274.52 337.73 273.59 336.8 272.66 335.87 271.73 334.94 270.8 334.01 269.87 333.08 268.94 332.15 268.01 331.22 267.08 330.29 266.15 329.36 265.22 328.43 264.29 327.51 263.36 326.58 262.43 325.65 261.5 324.72 260.57 323.79 259.64 322.86 258.71 321.93 257.78 321 256.85 320.07 255.92 319.14 254.99 318.21 254.06 317.28 253.13 316.35 252.2 315.42 251.27 314.49 250.34 313.56 249.41 312.63 248.48 311.7 247.56 311.93 247.33 312.16 247.1 312.39 246.87 312.61 246.64 312.84 246.41 313.07 246.19 313.3 245.96 313.53 245.73 313.76 245.5 313.98 245.27 314.21 245.04 314.44 244.82 314.67 244.59 314.9 244.36 315.12 244.13 315.35 243.9 315.58 243.67 315.81 243.45 316.04 243.22 316.27 242.99 316.49 242.76 316.72 242.53 316.95 242.31 317.18 242.08 317.41 241.85 317.64 241.62 317.86 241.39 318.09 241.16 318.32 240.94 318.55 240.71 318.78 240.48 319.01 240.25 319.23 240.02 319.46 239.79 319.69 239.57 319.92 239.34 320.15 239.11 320.37 238.88 320.6 238.65 320.83 238.43 321.06 238.2 321.29 237.97 321.52 237.74 321.74 237.51 321.97 237.28 322.2 237.06 322.43 236.83 322.66 236.6 322.89 236.37 323.11 236.14 323.34 235.91 323.57 235.69 323.8 235.46 324.03 235.23 324.25 235 324.48 234.77 324.71 234.54 324.94 234.32 325.17 234.09 325.4 233.86 325.62 233.63 325.85 233.4 326.08 233.18 326.31 232.95 327.24 233.88 328.17 234.81 329.1 235.74 330.03 236.67 330.96 237.6 331.89 238.52 332.82 239.45 333.75 240.38 334.68 241.31 335.61 242.24 336.54 243.17 337.47 244.1 338.39 245.03 339.32 245.96 340.25 246.89 341.18 247.82 342.11 248.75 343.04 249.68 343.97 250.61 344.9 251.54 345.83 252.47 346.76 253.4 347.69 254.33 348.62 255.26 349.55 256.19 350.48 257.12 351.41 258.05 352.34 258.98 353.27 259.91 354.2 260.84 355.13 261.77 356.06 262.7 356.99 263.63 357.92 264.56 358.85 265.49 359.78 266.41 360.71 267.34 361.64 268.27 362.57 269.2 363.5 270.13 364.42 271.06 365.35 271.99 366.28 272.92 367.21 273.85 368.14 274.78 369.07 275.71 370 276.64 370.93 277.57 371.86 278.5 372.79 279.43 373.72 280.36 374.65 281.29 375.58 282.22 376.51 283.15 377.44 284.08 378.37 285.01 379.3 285.94 380.23 286.87 381.16 287.8 382.09 288.73 383.02 289.66 383.95 290.59 384.88 291.52 385.81 292.44 385.58 292.67 385.35 292.9 385.12 293.13 384.89 293.36 384.67 293.59 384.44 293.81 384.21 294.04 383.98 294.27 383.75 294.5 383.52 294.73 383.3 294.96 383.07 295.18 382.84 295.41 382.61 295.64 382.38 295.87 382.16 296.1 381.93 296.33 381.7 296.55 381.47 296.78 381.24 297.01 381.01 297.24 380.79 297.47 380.56 297.69 380.33 297.92 380.1 298.15 379.87 298.38 379.64 298.61 379.42 298.84 379.19 299.06 378.96 299.29 378.73 299.52 378.5 299.75 378.27 299.98 378.05 300.21 377.82 300.43 377.59 300.66 377.36 300.89 377.13 301.12 376.91 301.35 376.68 301.57 376.45 301.8 376.22 302.03 375.99 302.26 375.76 302.49 375.54 302.72 375.31 302.94 375.08 303.17 374.85 303.4 374.62 303.63 374.39 303.86 374.17 304.09 373.94 304.31 373.71 304.54 373.48 304.77 373.25 305 373.03 305.23 372.8 305.46 372.57 305.68 372.34 305.91 372.11 306.14 371.88 306.37 371.66 306.6 371.43 306.82 371.2 307.05"/>';
+    const SoundIcon = ({ on }) => (
+      <svg viewBox="140 165 252 210" fill="currentColor" aria-hidden="true" className="h-[22px] w-auto shrink-0"
+        dangerouslySetInnerHTML={{ __html: on ? SOUND_ICON_ON : SOUND_ICON_OFF }} />
+    );
+
+    // ================= 主程式 =================
+    const App = () => {
+      const wide = useWideMode();
+      const [user, setUser] = useState(null);
+      const [connected, setConnected] = useState(false);
+      const [view, setView] = useState('loading'); // loading | home | setup | room
+      // 開場畫面：進入網頁時停留 3 秒再淡出（重新整理接回進行中的房間時略過，避免擋住比賽畫面）
+      const formulaRef = useRef(null);   // 首頁「方程式」三個字（英文副標對齊用）
+      const splashTitleRef = useRef(null);   // 開場畫面「綠能方程式」（標語對齊用）
+      const homeCarRef = useRef(null);   // 首頁賽車（起跑燈循環用）
+      const lightsRef = useRef(null);    // 首頁 F1 起跑燈
+      const [launching, setLaunching] = useState(false);
+      const [splash, setSplash] = useState(() => (store.get(HOST_STORAGE_KEY) ? 'off' : 'show'));
+      useEffect(() => {
+        if (splash !== 'show') return;
+        const t1 = setTimeout(() => setSplash('fade'), SPLASH_MS);
+        const t2 = setTimeout(() => setSplash('off'), SPLASH_MS + SPLASH_FADE_MS);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
+      }, []);
+      // 首頁進場動畫：開場畫面開始淡出時播放
+      const homeIntro = view === 'home' && splash !== 'show';
+      // 首頁賽車顏色：一開始是極速藍，每次開走再進場就換下一色（16 色循環）
+      const [homeCarColor, setHomeCarColor] = useState(() => CAR_COLORS.findIndex(c => c.id === 'blue'));
+      // F1 起跑燈循環：紅燈依序亮 5 顆 → 全部變綠、賽車衝出畫面 → 熄燈、賽車從另一側開回來 → 休息
+      useEffect(() => {
+        if (!homeIntro || prefersReducedMotion()) return;
+        // 時間軸（毫秒，從第 1 顆紅燈算起）：紅燈每 0.7 秒亮一顆 → 5 顆全亮後 0.5 秒變綠燈並出發 → 綠燈 1.4 秒後熄燈、賽車開回來
+        const RED_GAP = 700, HOLD_MS = 500, GREEN_MS = 1400, CYCLE_MS = 8100;
+        const GO_AT = RED_GAP * 4 + HOLD_MS;            // 3.3 秒變綠燈
+        const PLAN = [
+          ...[1, 2, 3, 4, 5].map((n, i) => [RED_GAP * i, n]),
+          [GO_AT, 'go'],
+          [GO_AT + GREEN_MS, 'back'],
+        ];
+        let timers = [];
+        const apply = (st) => {
+          const stEl = lightsRef.current ? lightsRef.current.querySelector('[data-status]') : null;
+          const car = homeCarRef.current;
+          if (!car || !stEl || car.closest('.hm-launch')) return;
+          const n = typeof st === 'number' ? st : 0;
+          // 航班看板：BOARDING（1～3）→ READY（4～5）→ TAKE OFF 起飛 → 飛回來恢復 BOARDING；換字時翻牌
+          const label = st === 'go' ? 'TAKE OFF' : n >= 4 ? 'READY' : 'BOARDING';
+          if (stEl.textContent !== label) { stEl.textContent = label; stEl.classList.remove('flip'); void stEl.offsetWidth; stEl.classList.add('flip'); }
+          stEl.classList.toggle('go', st === 'go');
+          if (st === 'go') { car.classList.remove('race-in'); void car.offsetWidth; car.classList.add('race-out'); }
+          if (st === 'back') { setHomeCarColor(i => (i + 1) % CAR_COLORS.length); car.classList.remove('race-out'); void car.offsetWidth; car.classList.add('race-in'); }
+          // 起跑燈音效（每一輪都有）：紅燈「嗶」→ 綠燈高音＋賽車衝刺離開 → 賽車開回來
+          if (typeof st === 'number' && st > 0) Sound.sfx('redLight');
+          if (st === 'go') { Sound.sfx('greenLight'); setTimeout(() => Sound.sfx('carDash'), 80); }
+          if (st === 'back') Sound.sfx('carBack');
+        };
+        const cycle = () => {
+          timers = PLAN.map(([t, st]) => setTimeout(() => apply(st), t));
+          timers.push(setTimeout(cycle, CYCLE_MS));
+        };
+        const t0 = setTimeout(cycle, 2200 + RED_GAP);     // 等進場動畫結束再開始
+        return () => { clearTimeout(t0); timers.forEach(clearTimeout); };
+      }, [homeIntro]);
+      // 按下「開始遊戲」：賽車衝出畫面後再切到選桌畫面
+      const startGame = () => {
+        if (launching) return;
+        setSelected([]);
+        Sound.sfx('carDash');   // 賽車衝刺離開
+        if (prefersReducedMotion()) { setView('setup'); return; }
+        setLaunching(true);
+        setTimeout(() => { setLaunching(false); setView('setup'); }, LAUNCH_MS);
+      };
+      const [selected, setSelected] = useState([]);
+      const [raced, setRaced] = useState(loadRaced);
+      const [unmarkArmed, setUnmarkArmed] = useState(null); // 準備解除註記的桌號
+      const [history, setHistory] = useState(loadHistory);
+      const [showHistory, setShowHistory] = useState(false);
+      // 遊戲設定（目標分數、比賽秒數）：記在這台電腦，建立房間時套用
+      const [settings, setSettings] = useState(loadSettings);
+      const [showSettings, setShowSettings] = useState(false);
+      const changeSettings = (patch) => setSettings(prev => { const next = { ...prev, ...patch }; store.set(SETTINGS_STORAGE_KEY, JSON.stringify(next)); return next; });
+      const [roomCode, setRoomCode] = useState(null);
+      const [room, setRoom] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+      useEffect(() => { if (!error) return; const t = setTimeout(() => setError(''), 8000); return () => clearTimeout(t); }, [error]);
+      const [now, setNow] = useState(Date.now());      // 伺服器時間（比賽中每 0.1 秒更新）
+      const offsetRef = useRef(0);                      // 本機與 Firebase 伺服器的時間差
+      const sumsRef = useRef({});
+      const refereeRef = useRef({ racingFor: null, finishedFor: null });
+      const lastSyncRef = useRef('');
+
+      // 1. 匿名登入 + 連線狀態
+      useEffect(() => {
+        signInAnonymously(auth).catch(err => { console.error(err); setError('Firebase 登入失敗，請確認網路與匿名登入設定'); });
+        const unAuth = onAuthStateChanged(auth, setUser);
+        const unConn = onValue(ref(db, '.info/connected'), s => setConnected(s.val() === true));
+        return () => { unAuth(); unConn(); };
+      }, []);
+
+      // 2. 重新整理時，接回自己建立且尚未關閉的房間
+      useEffect(() => {
+        if (!user) return;
+        const saved = store.get(HOST_STORAGE_KEY);
+        if (!saved) { setView('home'); return; }
+        get(ref(db, `rooms/${saved}/meta`)).then(s => {
+          const m = s.val();
+          if (m && m.hostUid === user.uid && m.status !== 'closed') { setRoomCode(saved); setView('room'); }
+          else { store.del(HOST_STORAGE_KEY); setView('home'); }
+        }).catch(() => setView('home'));
+      }, [user]);
+
+      // 3. 監聽房間資料 + 主控端在線狀態（斷線時自動標記離線，重連後恢復）
+      //    高併發效能：不監聽整個房間，而是分開監聽各區塊；
+      //    scores（數百位玩家每 0.3 秒回傳）變動最頻繁 → 先存進緩衝區，每 250ms 最多更新畫面一次。
+      //    裁判判斷（達標結束、結算排名、同步總分給手機）改用「即時分數」sumsRef，不受畫面節流影響、不會漏掉最後幾分。
+      useEffect(() => {
+        setRoom(null);
+        sumsRef.current = {};
+        if (!roomCode) return;
+        const PARTS = ['meta', 'tables', 'teams', 'players', 'teamScores', 'result', 'scores'];
+        const latest = {};
+        const seen = new Set();
+        let alive = true;
+        let scoreTimer = null;
+        let shownScores = null;   // 畫面上目前使用的分數（只在節流時間到才換成最新）
+        // 即時加總（不觸發重繪）：給裁判計時器與結算使用
+        const syncSums = () => { sumsRef.current = teamSums({ tables: latest.tables, scores: latest.scores }); };
+        // 全部區塊都至少收到一次後才顯示，避免畫面拿到不完整的房間資料；meta 不見代表房間已被刪除 → room = null
+        const commit = () => {
+          if (!alive || seen.size < PARTS.length) return;
+          setRoom(latest.meta ? { ...latest, scores: shownScores } : null);
+        };
+        const unsubs = PARTS.map(part => onValue(ref(db, `rooms/${roomCode}/${part}`), snap => {
+          latest[part] = snap.val();
+          const first = !seen.has(part);
+          seen.add(part);
+          if (part === 'scores' || part === 'tables') syncSums();
+          // 不在比賽中（結束、中止、準備）時分數不必節流：一律使用最新分數，確保結算與成績紀錄完全正確
+          if (part === 'meta' && latest.meta?.status !== 'racing') shownScores = latest.scores;
+          if (part === 'scores') {
+            if (first || latest.meta?.status !== 'racing') shownScores = latest.scores;
+            else {
+              // 分數節流：250ms 內的多次變動合併成一次重繪（每秒最多 4 次）；其他區塊更新時也不會順便帶入新分數
+              if (!scoreTimer) scoreTimer = setTimeout(() => { scoreTimer = null; shownScores = latest.scores; commit(); }, SCORE_RENDER_MS);
+              return;
+            }
+          }
+          commit();
+        }, err => console.error(`監聽 ${part} 失敗`, err)));
+        const onlineRef = ref(db, `rooms/${roomCode}/meta/hostOnline`);
+        const unConn = onValue(ref(db, '.info/connected'), s => {
+          if (s.val() !== true) return;
+          onDisconnect(onlineRef).set(false).then(() => set(onlineRef, true)).catch(console.error);
+        });
+        return () => {
+          alive = false;
+          unsubs.forEach(fn => fn());
+          unConn();
+          if (scoreTimer) clearTimeout(scoreTimer);
+        };
+      }, [roomCode]);
+
+      // 房間被刪除時回首頁
+      useEffect(() => {
+        if (view === 'room' && roomCode && room === null) {
+          const t = setTimeout(() => { get(ref(db, `rooms/${roomCode}/meta`)).then(s => { if (!s.exists()) leaveRoom('home'); }); }, 1500);
+          return () => clearTimeout(t);
+        }
+      }, [room, view, roomCode]);
+
+      // 隊長備援 + 顏色防撞：準備階段由主控端確保每組隊長正確、各組顏色不重複
+      useEffect(() => {
+        if (!room || !roomCode || room.meta?.status !== 'lobby') return;
+        const updates = {};
+        const used = new Set();
+        (room.tables || []).forEach(t => {
+          const key = teamKey(t);
+          const current = room.teams?.[key]?.leaderUid || null;
+          const desired = resolveLeader(room.players?.[key], current);
+          if (desired !== current) updates[`teams/${key}/leaderUid`] = desired;
+          let color = room.teams?.[key]?.color;
+          if (!color || used.has(color)) {
+            const free = CAR_COLORS.find(c => !used.has(c.id) && !(room.tables || []).some(o => o !== t && room.teams?.[teamKey(o)]?.color === c.id));
+            if (free) { color = free.id; updates[`teams/${key}/color`] = color; }
+          }
+          used.add(color);
+        });
+        if (Object.keys(updates).length) update(ref(db, `rooms/${roomCode}`), updates).catch(console.error);
+      }, [room, roomCode]);
+
+      // ===== 比賽控制（主控端擔任裁判）=====
+      const status = room?.meta?.status || 'lobby';
+      const win = raceWindow(room?.meta);
+      const target = roomTarget(room?.meta);
+      const mode = roomMode(room?.meta);
+      const duration = roomDuration(room?.meta);
+      const targetRef = useRef(target); targetRef.current = target;
+      const sums = useMemo(() => teamSums(room), [room]);
+      // 踩到障礙物：比對每位玩家回傳的次數（hb 香蕉皮、hc 三角錐），有增加就在賽道彈出貼紙、左側加一筆紀錄
+      const [hazFx, setHazFx] = useState([]);
+      const [hazFeed, setHazFeed] = useState([]);
+      const [frozenLanes, setFrozenLanes] = useState({});   // 被冰凍中的隊伍（桌號 → 特效）
+      const hazPrevRef = useRef({ key: null, map: {} });
+      const hazIdRef = useRef(0);
+      useEffect(() => {
+        if (view !== 'room' || !room) return;
+        const key = `${roomCode}:${win?.countdownAt || 0}`;
+        const cur = {};
+        Object.entries(room.scores || {}).forEach(([tk, users]) => Object.entries(users || {}).forEach(([u, v]) => {
+          cur[`${tk}/${u}`] = { banana: Number(v?.hb) || 0, cone: Number(v?.hc) || 0, ice: Number(v?.hi) || 0 };
+        }));
+        const prev = hazPrevRef.current;
+        hazPrevRef.current = { key, map: cur };
+        if (prev.key !== key) { setHazFx([]); setHazFeed([]); setFrozenLanes({}); return; }   // 新的一場（或大螢幕剛重新整理）：只記錄起點
+        if (status !== 'racing') return;
+        const events = [];
+        Object.entries(cur).forEach(([k, c]) => {
+          const p = prev.map[k] || { banana: 0, cone: 0, ice: 0 };
+          const table = Number(k.split('/')[0].slice(1));
+          ['banana', 'cone', 'ice'].forEach(type => { for (let i = 0; i < Math.min(3, c[type] - p[type]); i++) events.push({ id: ++hazIdRef.current, table, type, delay: i * 180 }); });
+        });
+        if (!events.length) return;
+        setHazFeed(f => [...events.slice().reverse(), ...f].slice(0, HAZ_FEED_MAX));
+        events.forEach(ev => setTimeout(() => {
+          if (ev.type === 'ice') {
+            // 冰凍：整條賽道被冰塊封住（同一隊連續被凍就延長）
+            setFrozenLanes(f => ({ ...f, [ev.table]: { id: ev.id, until: Date.now() + ICE_FX_MS } }));
+            setTimeout(() => setFrozenLanes(f => (f[ev.table]?.id === ev.id ? (({ [ev.table]: _, ...rest }) => rest)(f) : f)), ICE_FX_MS);
+            return;
+          }
+          setHazFx(fx => [...fx, ev]);
+          setTimeout(() => setHazFx(fx => fx.filter(x => x.id !== ev.id)), HAZ_FX_MS);
+        }, ev.delay));
+      }, [room?.scores, status, view, roomCode, win?.countdownAt]);
+
+      // 伺服器時間差：所有裝置用同一個時鐘計算倒數
+      useEffect(() => onValue(ref(db, '.info/serverTimeOffset'), s => { offsetRef.current = Number(s.val()) || 0; }), []);
+
+      const finishRace = (reason) => {
+        if (!room || !win || refereeRef.current.finishedFor === win.countdownAt) return;
+        refereeRef.current.finishedFor = win.countdownAt;
+        const ranking = rankTeams(room.tables || [], sumsRef.current);
+        const teamScores = {};
+        ranking.forEach(r => { teamScores[teamKey(r.table)] = r.score; });
+        update(ref(db, `rooms/${roomCode}`), {
+          'meta/status': 'finished', 'meta/endReason': reason, 'meta/finishedAt': serverTimestamp(),
+          teamScores, result: { reason, ranking },
+        }).catch(err => { console.error(err); refereeRef.current.finishedFor = null; setError(`結算失敗：${errText(err)}`); });
+      };
+
+      // 計時與結束判斷：倒數結束 → 正式開賽；任一組達 500 分或 30 秒到 → 結束
+      useEffect(() => {
+        if (!win || !['countdown', 'racing'].includes(status)) return;
+        const tick = () => {
+          const t = Date.now() + offsetRef.current;
+          setNow(t);
+          if (status === 'countdown' && t >= win.start && refereeRef.current.racingFor !== win.countdownAt) {
+            refereeRef.current.racingFor = win.countdownAt;
+            update(ref(db, `rooms/${roomCode}/meta`), { status: 'racing' }).catch(err => { console.error(err); refereeRef.current.racingFor = null; setError(`開賽失敗：${errText(err)}`); });
+          }
+          if (status === 'racing') {
+            if (Object.values(sumsRef.current).some(v => v >= targetRef.current)) finishRace('target');
+            else if (t >= win.end + FINISH_GRACE_MS) finishRace('timeout');
+          }
+        };
+        tick();
+        const id = setInterval(tick, 100);
+        return () => clearInterval(id);
+      }, [status, win?.countdownAt, roomCode]);
+
+      // 有組別達標時立即結束（不用等下一次計時）
+      useEffect(() => {
+        if (status === 'racing' && Object.values(sumsRef.current).some(v => v >= target)) finishRace('target');
+      }, [sums, status]);
+
+      // 比賽中把各組總分同步給手機（節流）
+      useEffect(() => {
+        if (status !== 'racing' || !roomCode) return;
+        const id = setInterval(() => {
+          const payload = {};
+          Object.entries(sumsRef.current).forEach(([t, v]) => { payload[teamKey(t)] = v; });
+          const key = JSON.stringify(payload);
+          if (key === lastSyncRef.current) return;
+          lastSyncRef.current = key;
+          set(ref(db, `rooms/${roomCode}/teamScores`), payload).catch(console.error);
+        }, TEAM_SCORE_SYNC_MS);
+        return () => clearInterval(id);
+      }, [status, roomCode]);
+
+      const allGreen = !!room?.tables?.length && room.tables.every(t => teamStatus(room, t).light === 'green');
+
+      // ================= 音樂與音效 =================
+      const [soundState, setSoundState] = useState(Sound.state());
+      useEffect(() => Sound.subscribe(setSoundState), []);
+      // 鍵盤 F：進入全螢幕（再按一次 F 也可以退出）；Esc：退出全螢幕（瀏覽器內建）
+      useEffect(() => {
+        const onKey = (e) => {
+          if (e.key !== 'f' && e.key !== 'F') return;
+          if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+          const tag = (e.target?.tagName || '').toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+          e.preventDefault();
+          if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+          else (document.documentElement.requestFullscreen?.() || Promise.resolve()).catch(() => {});
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+      const finalPhase = status === 'racing' && !!win && now >= win.end - 5000;
+      const [resultMusic, setResultMusic] = useState(false);   // 結算音效播完後，才放回等待配樂
+      let bgmKey = null;
+      if (splash !== 'show') {
+        if (view === 'home') bgmKey = 'home';
+        else if (view === 'setup') bgmKey = 'lobby';
+        else if (view === 'room' && room) {
+          if (status === 'lobby') bgmKey = 'lobby';
+          else if (status === 'racing') bgmKey = finalPhase ? 'final' : 'race';
+          else if ((status === 'finished' || status === 'aborted') && resultMusic) bgmKey = 'lobby';
+        }
+      }
+      useEffect(() => { Sound.music(bgmKey); }, [bgmKey]);
+      useEffect(() => () => Sound.music(null), []);
+      // 開場畫面
+      useEffect(() => { if (splash === 'show') Sound.sfx('splash'); }, [splash]);
+      // 首頁按 Enter 鍵 = 按「開始遊戲」（開場畫面播放中、或焦點在其他按鈕／輸入框時不觸發）
+      useEffect(() => {
+        if (view !== 'home' || splash === 'show') return;
+        const onKey = (e) => {
+          if (e.key !== 'Enter' || e.repeat || e.isComposing) return;
+          const tag = e.target?.tagName?.toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || tag === 'button' || e.target?.isContentEditable) return;
+          e.preventDefault();
+          Sound.unlock();
+          startGame();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [view, splash, launching]);
+      // 首頁進場：標題逐字蓋章、賽車開進來、按鈕彈出
+      useEffect(() => {
+        if (!homeIntro || launching) return;
+        // 標題「綠能方程式」逐字出現：不播音效
+        const ts = [];
+        ts.push(setTimeout(() => Sound.sfx('carIn'), 600), setTimeout(() => Sound.sfx('popIn'), 1420));
+        return () => ts.forEach(clearTimeout);
+      }, [homeIntro]);
+      // 換頁：進到選桌畫面、房間建立成功
+      const prevViewRef = useRef(view);
+      useEffect(() => {
+        const prev = prevViewRef.current; prevViewRef.current = view;
+        if (view === 'setup' && prev !== 'setup') Sound.sfx('pageIn');
+        if (view === 'room' && prev === 'setup') Sound.sfx('roomCreated');
+      }, [view]);
+      // 房間等待：玩家加入、車隊全員準備（亮綠燈）、全部準備完成
+      const onlineCount = (room?.tables || []).reduce((a, t) => a + teamStatus(room, t).count, 0);
+      const greenCount = (room?.tables || []).filter(t => teamStatus(room, t).light === 'green').length;
+      const lobbyRef = useRef({ code: null, online: 0, green: 0, all: false });
+      useEffect(() => {
+        const p = lobbyRef.current;
+        if (view !== 'room' || !room || status !== 'lobby' || p.code !== roomCode) { lobbyRef.current = { code: roomCode, online: onlineCount, green: greenCount, all: allGreen }; return; }
+        if (allGreen && !p.all) Sound.sfx('allReady');
+        else if (greenCount > p.green) Sound.sfx('teamReady');
+        else if (onlineCount > p.online) Sound.sfx('join');
+        lobbyRef.current = { code: roomCode, online: onlineCount, green: greenCount, all: allGreen };
+      }, [view, status, roomCode, onlineCount, greenCount, allGreen]);
+      // 倒數 3・2・1・GO
+      const cdLabel = view === 'room' && win && (status === 'countdown' || (status === 'racing' && now < win.start + 1000))
+        ? (win.start - now > 0 ? String(Math.min(3, Math.ceil((win.start - now) / 1000))) : 'GO!') : null;
+      useEffect(() => { if (cdLabel === 'GO!') Sound.sfx('go'); else if (cdLabel) Sound.sfx('countBeep'); }, [cdLabel]);
+      // 最後 5 秒：每秒一聲提示（配樂同時換成升調衝刺版）
+      const secLeft = status === 'racing' && win ? Math.ceil((win.end - now) / 1000) : null;
+      useEffect(() => { if (secLeft !== null && secLeft >= 1 && secLeft <= 5) Sound.sfx('tick', 5 - secLeft); }, [secLeft]);
+      // 比賽結束：結果畫面出現的同一刻播放冠軍號角（中止則播失敗音）→ 播完回到等待配樂
+      useEffect(() => {
+        if (status !== 'finished' && status !== 'aborted') { setResultMusic(false); return; }
+        const ts = [];
+        if (status === 'aborted') { Sound.sfx('abort'); ts.push(setTimeout(() => setResultMusic(true), 2500)); }
+        else { Sound.sfx('victory'); ts.push(setTimeout(() => setResultMusic(true), 4200)); }
+        return () => ts.forEach(clearTimeout);
+      }, [status, win?.countdownAt]);
+
+      const startRace = () => {
+        if (!room || status !== 'lobby' || !allGreen) return;
+        lastSyncRef.current = '';
+        update(ref(db, `rooms/${roomCode}`), {
+          'meta/status': 'countdown', 'meta/countdownAt': serverTimestamp(), 'meta/endReason': null, 'meta/finishedAt': null,
+          scores: null, teamScores: null, result: null,
+        }).catch(err => { console.error(err); setError(`開始失敗：${errText(err)}`); });
+      };
+
+      // 緊急中止：立即停止比賽並保留當下分數
+      const abortRace = () => {
+        if (!room || !['countdown', 'racing'].includes(status)) return;
+        refereeRef.current.finishedFor = win?.countdownAt ?? 'aborted';
+        const ranking = rankTeams(room.tables || [], sumsRef.current);
+        update(ref(db, `rooms/${roomCode}`), {
+          'meta/status': 'aborted', 'meta/endReason': 'aborted', 'meta/finishedAt': serverTimestamp(),
+          result: { reason: 'aborted', ranking },
+        }).catch(err => { console.error(err); setError(`中止失敗：${errText(err)}`); });
+      };
+
+      // 重置本場：同一批車隊回到準備狀態（全員需重新確認準備）
+      const resetRace = () => {
+        if (!room) return;
+        const updates = {
+          'meta/status': 'lobby', 'meta/countdownAt': null, 'meta/endReason': null, 'meta/finishedAt': null,
+          scores: null, teamScores: null, result: null,
+        };
+        Object.entries(room.players || {}).forEach(([k, members]) => {
+          Object.keys(members || {}).forEach(id => { updates[`players/${k}/${id}/ready`] = false; });
+        });
+        refereeRef.current = { racingFor: null, finishedFor: null };
+        update(ref(db, `rooms/${roomCode}`), updates).catch(err => { console.error(err); setError(`重置失敗：${errText(err)}`); });
+      };
+
+      // 比賽正式開始（進入倒數）後，把本場桌號記錄為「已比賽」
+      const roomStatus = room?.meta?.status;
+      useEffect(() => {
+        if (!room?.tables || !['countdown', 'racing', 'finished'].includes(roomStatus)) return;
+        setRaced(prev => {
+          const next = [...new Set([...prev, ...room.tables])].sort((a, b) => a - b);
+          if (next.length === prev.length) return prev;
+          saveRaced(next);
+          return next;
+        });
+      }, [roomStatus, room?.tables]);
+
+      useEffect(() => {
+        if (unmarkArmed === null) return;
+        const t = setTimeout(() => setUnmarkArmed(null), 3000);
+        return () => clearTimeout(t);
+      }, [unmarkArmed]);
+
+      const toggleTable = (t) => {
+        setError('');
+        if (raced.includes(t)) {
+          // 已比賽的桌號：按兩次可解除註記（例如比賽中途緊急中止要重賽）
+          if (unmarkArmed === t) {
+            const next = raced.filter(x => x !== t);
+            setRaced(next); saveRaced(next); setUnmarkArmed(null);
+          } else setUnmarkArmed(t);
+          return;
+        }
+        setSelected(prev => prev.includes(t) ? prev.filter(x => x !== t) : prev.length >= MAX_TEAMS ? prev : [...prev, t]);
+      };
+
+      const resetRaced = () => { setRaced([]); saveRaced([]); setUnmarkArmed(null); };
+      const clearHistory = () => { setHistory([]); saveHistory([]); };
+      // 還原：合併匯入的場次（以場次 id 判斷，已存在的不重複加入），回傳新增的場數
+      const restoreHistory = (recs) => {
+        const have = new Set(history.map(r => r.id));
+        const fresh = recs.filter(r => !have.has(r.id)).filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i);
+        if (!fresh.length) return 0;
+        const next = [...history, ...fresh].sort((a, b) => a.finishedAt - b.finishedAt);
+        setHistory(next); saveHistory(next);
+        return fresh.length;
+      };
+
+      // 比賽正常結束（非緊急中止）時自動存成績紀錄；同組重賽會各自存一筆
+      useEffect(() => {
+        if (!room || !roomCode || room.meta?.status !== 'finished' || !room.result || !room.meta?.countdownAt) return;
+        const id = `${roomCode}-${room.meta.countdownAt}`;
+        setHistory(prev => {
+          if (prev.some(r => r.id === id)) return prev;
+          const next = [...prev, buildRecord(room, roomCode)];
+          saveHistory(next);
+          return next;
+        });
+      }, [room, roomCode]);
+      const canCreate = selected.length >= MIN_TEAMS && selected.length <= MAX_TEAMS;
+
+      // 建立房間：隨機 6 碼，用 transaction 確保不與既有房間重複
+      const createRoom = async () => {
+        if (!canCreate || !user || busy) return;
+        setBusy(true); setError('');
+        try {
+          const tables = [...new Set(selected)].filter(t => !raced.includes(t)).sort((a, b) => a - b);
+          if (tables.length !== selected.length) throw new Error('桌號重複或已比賽過');
+          if (tables.length < MIN_TEAMS || tables.length > MAX_TEAMS) throw new Error(`請選擇 ${MIN_TEAMS}～${MAX_TEAMS} 組`);
+          const teams = {};
+          tables.forEach((t, i) => { teams[teamKey(t)] = { color: CAR_COLORS[i % CAR_COLORS.length].id }; });
+          let code = null;
+          for (let i = 0; i < 20 && !code; i++) {
+            const candidate = String(100000 + Math.floor(Math.random() * 900000));
+            const data = { meta: { hostUid: user.uid, createdAt: Date.now(), status: 'lobby', mode: settings.mode, target: settings.target, duration: settings.duration }, tables, teams };
+            const res = await runTransaction(ref(db, `rooms/${candidate}`), cur => (cur === null ? data : undefined));
+            if (res.committed) code = candidate;
+          }
+          if (!code) throw new Error('無法產生房間編號，請再試一次');
+          store.set(HOST_STORAGE_KEY, code);
+          setRoomCode(code);
+          setView('room');
+        } catch (err) {
+          console.error(err);
+          setError(`建立房間失敗：${errText(err)}`);
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      // next：離開後要去的畫面（'home' 首頁／'setup' 選擇參賽桌號）
+      const [roomExit, setRoomExit] = useState(false);
+      const leaveRoom = (next = 'home') => {
+        store.del(HOST_STORAGE_KEY);
+        setRoomCode(null);
+        setRoom(null);
+        setSelected([]);
+        setView(next);
+      };
+
+      // 緊急中止／取消房間：標記為關閉，手機端會自動退出
+      // keepTables：回到選桌畫面時保留這個房間原本選的桌號，方便直接修改後重新建立
+      const closeRoom = async (next = 'home', keepTables = false) => {
+        const tables = room?.tables || [];
+        const animate = !prefersReducedMotion();
+        if (animate) setRoomExit(true);   // 先讓比賽畫面淡出，再切到下一頁
+        await Promise.all([
+          update(ref(db, `rooms/${roomCode}/meta`), { status: 'closed', closedAt: Date.now() }).catch(err => console.error(err)),
+          animate ? new Promise(r => setTimeout(r, ROOM_EXIT_MS)) : null,
+        ]);
+        leaveRoom(next);
+        if (keepTables) setSelected(tables);
+        setRoomExit(false);
+      };
+
+      const serverBadge = (
+        <div className="flex items-center gap-2 px-3 py-1 bg-black text-white text-sm font-bold font-mono rounded">
+          <span className={`animate-pulse ${connected ? 'text-green-400' : 'text-red-400'}`}>●</span> SERVER {connected ? 'ONLINE' : 'RECONNECTING...'}
+        </div>
+      );
+
+      return (
+        <div className="h-screen w-screen bg-[#f1f5f9] flex flex-col items-center justify-center relative overflow-hidden isolate">
+          {/* 背景格紋：每一頁持續流動 */}
+          <BgFlow style={{ zIndex: -1 }} />
+
+          {/* 音效開關（左下角）：第一次點擊啟動聲音，之後可切換開／關 */}
+          <button data-testid="sound-toggle" onClick={() => Sound.toggle()}
+            aria-label={!soundState.unlocked ? '點此開啟音效' : soundState.enabled ? '音效：開（點擊關閉）' : '音效：關（點擊開啟）'}
+            title={!soundState.unlocked ? '點此開啟音效' : soundState.enabled ? '音效：開（點擊關閉）' : '音效：關（點擊開啟）'}
+            className={`absolute left-5 bottom-4 z-[90] flex items-center gap-2 text-[#1e3a8a] font-black text-base tracking-wider hover:text-[#e11d48] active:translate-y-[2px] transition-colors ${!soundState.unlocked && soundState.enabled ? 'animate-pulse' : ''}`}>
+            {/* 尚未啟動：只顯示文字；啟動後：只顯示開／關圖示 */}
+            {!soundState.unlocked
+              ? <span>點此開啟音效</span>
+              : <SoundIcon on={soundState.enabled} />}   {/* 圖示高 22px（尺寸方案 03）*/}
+          </button>
+          {error && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#e11d48] text-white font-black px-4 py-2 border-4 border-black shadow-[4px_4px_0px_#000]">{error}</div>
+          )}
+
+          {view === 'loading' && <TitleBlock big />}
+
+          {/* 開場畫面 */}
+          {splash !== 'off' && (
+            <div data-testid="splash" className="absolute inset-0 z-[80] bg-[#f1f5f9] flex items-center justify-center isolate"
+              style={{ opacity: splash === 'fade' ? 0 : 1, transition: `opacity ${SPLASH_FADE_MS}ms ease`, pointerEvents: splash === 'fade' ? 'none' : 'auto' }}>
+              <BgFlow style={{ zIndex: -1 }} />
+              <div className="flex flex-col items-center" style={{ fontSize: 'min(1vw, 1.8vh)' }}>
+                {/* 黃線＋標語：整體寬度與「綠能方程式」相同 */}
+                <FitWidthText targetRef={splashTitleRef} className="mb-[2.5vh]">
+                    <span className="inline-flex items-center gap-[0.6em] text-[#1e3a8a]">
+                      <span className="inline-block h-[0.1em] min-h-[3px] w-[3em] bg-[#e11d48]"></span>
+                      <span className="inline-block font-medium tracking-[0.2em]">解鎖 2027 冠軍航<span className="tracking-normal">道</span></span>
+                    </span>
+                  </FitWidthText>
+                <h1 style={{ fontSize: wide ? 'min(20vh, 240px)' : 'clamp(80px, min(11vw, 20vh), 240px)' }}><LogoText><span ref={splashTitleRef} className="inline-block">雲端飆速賽</span></LogoText></h1>
+              </div>
+            </div>
+          )}
+
+          {/* ===== 遊戲首頁（海報式排版）===== */}
+          {view === 'home' && (
+            <div className={`absolute inset-0 flex flex-col z-10 text-[#1e3a8a] hm-live ${homeIntro && !launching ? 'hm-intro' : ''} ${launching ? 'hm-launch' : ''}`}>
+              {/* 上方資訊列 */}
+              <div className="flex items-center justify-between px-[4vw] pt-[4vh] font-hud font-bold tracking-[0.3em] w-full mx-auto" style={{ fontSize: wide ? 'clamp(8px, 1.8vh, 20px)' : 'clamp(12px, min(1vw, 1.8vh), 20px)', ...(wide ? { maxWidth: HOME_WIDE_MAX, padding: '4vh 4vh 0' } : {}) }}>
+                <div className="text-[#1e3a8a]/60 hm-season hm-fadeout">SEASON 2027</div>
+                <div className="tracking-normal">{serverBadge}</div>
+              </div>
+
+              {/* 主視覺 */}
+              <div className="flex-1 grid grid-cols-[1.1fr_1fr] items-center gap-[3vw] px-[6vw] w-full mx-auto" style={wide ? { maxWidth: HOME_WIDE_MAX, padding: '0 8vh', gap: '6vh' } : undefined}>
+                {/* 左欄疊在賽車上層：賽車進場時從標題後方穿過 */}
+                <div className="hm-exit flex flex-col items-start relative z-[2]">
+                  {/* 黃線＋副標：整體寬度與「方程式」相同 */}
+                  <FitWidthText targetRef={formulaRef} className="mb-[2.5vh]">
+                    <span className="inline-flex items-center gap-[0.6em] text-[#1e3a8a]">
+                      <span className="hm-bar inline-block h-[0.1em] min-h-[3px] w-[3em] bg-[#e11d48]"></span>
+                      <span className="hm-tagtxt inline-block font-medium tracking-[0.2em]">解鎖 2027 冠軍航<span className="tracking-normal">道</span></span>
+                    </span>
+                  </FitWidthText>
+                  <h1 className="hm-dim" style={{ fontSize: wide ? 'min(19vh, 230px)' : 'clamp(84px, min(10.5vw, 19vh), 230px)' }}><LogoText><IntroChars text="雲端" /><br /><span ref={formulaRef} className="inline-block"><IntroChars text="飆速賽" from={2} /></span></LogoText></h1>
+                  <FitWidthText targetRef={formulaRef} className="font-winner text-[#e11d48] mt-[2.5vh] hm-eng">CLOUD SPEED RACE</FitWidthText>
+                  <div className="hm-pop mt-[5vh]">
+                    <div className={user ? 'hm-breath' : ''}>
+                      <button onClick={startGame} disabled={!user}
+                        className={`${bigBtn(!!user)} !gap-[0.6em]`} style={{ fontSize: wide ? 'clamp(12px, 4.2vh, 48px)' : 'clamp(22px, min(2.2vw, 4.2vh), 48px)', padding: '0.45em 1.4em', borderWidth: wide ? 'clamp(3px, 0.6vh, 7px)' : 'clamp(4px, 0.35vw, 7px)' }}>
+                        開始遊戲
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative flex flex-col items-center justify-center">
+                  <div className="relative w-full" style={{ maxWidth: 'min(40vw, 72vh)' }}>
+                    {/* F1 起跑燈 */}
+                    <div className="hm-fadeout absolute left-0 right-0 flex justify-center pointer-events-none" style={{ bottom: 'calc(100% + 6vh)' }}>
+                      <div ref={lightsRef} className="hm-board-wrap" style={{ fontSize: wide ? 'clamp(10px, 4.2vh, 46px)' : 'clamp(22px, min(2.3vw, 4.2vh), 46px)' }}><div className="hm-board">
+                          <span className="hb-h">FLIGHT</span><span className="hb-h">TO</span><span className="hb-h">STATUS</span>
+                          <span className="hb-f">{[...'TSRC'].map((c, i) => <b key={i}>{c}</b>)}</span>
+                          <span className="hb-f">{[...'2027'].map((c, i) => <b key={i}>{c}</b>)}</span>
+                          <span className="hb-st" data-status>BOARDING</span>
+                        </div>
+                      </div>
+                    </div>
+                    {/* 2027 外框大字：以賽車為中心 */}
+                    <div className="relative">
+                      <div className="outline-num hm-num hm-fadeout absolute select-none pointer-events-none whitespace-nowrap"
+                        style={{ fontSize: wide ? 'min(38vh, 460px)' : 'clamp(160px, min(21vw, 38vh), 460px)', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>2027</div>
+                      <div ref={homeCarRef} className="hm-car relative w-full aspect-[120/45]">
+                        <div className="hm-speed sp-stripe">{[['#facc15', '0%', '0s'], ['#ffffff', '39%', '.15s'], ['#e11d48', '78%', '.3s']].map(([c, t, d]) => <i key={c} style={{ top: t, background: c, animationDelay: d }}></i>)}</div>
+                        <F1CarSVG color={CAR_COLORS[homeCarColor].hex} outline />
+                      </div>
+                    </div>
+                    {/* START／FINISH 賽道線：放在 2027 大字下方，不重疊 */}
+                    <div className="hm-fadeout" style={{ marginTop: wide ? 'max(2vh, calc(0.447 * min(38vh, 460px) - 0.1875 * 72vh + 2.5vh))' : 'max(2vh, calc(0.447 * clamp(160px, min(21vw, 38vh), 460px) - 0.1875 * min(40vw, 72vh) + 2.5vh))' }}><div className="hm-track flex items-center gap-3 font-hud text-[#1e3a8a]/70 font-bold tracking-[0.25em]" style={{ fontSize: wide ? 'clamp(7px, 1.7vh, 18px)' : 'clamp(11px, min(0.9vw, 1.7vh), 18px)' }}>
+                      <span>TAKE OFF</span>
+                      <div className="flex-1 track-dash"></div>
+                      <span>FINISH</span>
+                    </div></div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* ===== 賽事設定：選 2～10 組桌號 ===== */}
+          {view === 'setup' && (
+            <FitStage width={1240} fill={!!wide} className="pg-enter">
+              <TitleBlock />
+              <RetroWindow title="Race_Setup.exe" right={serverBadge} className={wide ? 'w-full' : 'max-w-6xl'}>
+                <div className="bg-[#facc15] border-b-4 border-black px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <span className="font-black text-black text-2xl">請選擇參賽桌號</span>
+                    <span className="ml-3 font-bold text-black text-base">（{MIN_TEAMS}～{MAX_TEAMS} 組，打叉為已比賽）</span>
+                  </div>
+                  <span className={`px-4 py-1 border-4 border-black font-black text-2xl font-mono ${canCreate ? 'bg-[#22c55e] text-black' : 'bg-black text-[#facc15]'}`}>
+                    {selected.length} / {MAX_TEAMS}
+                  </span>
+                </div>
+                <div className="bg-[#38bdf8] p-6">
+                  <div className={`grid gap-3 ${wide ? 'grid-cols-[repeat(20,minmax(0,1fr))]' : 'grid-cols-10'}`}>
+                    {Array.from({ length: TOTAL_TABLES }, (_, i) => i + 1).map(t => {
+                      const done = raced.includes(t);
+                      const on = selected.includes(t);
+                      const full = !on && !done && selected.length >= MAX_TEAMS;
+                      const armed = unmarkArmed === t;
+                      return (
+                        <button key={t} data-table={t} data-raced={done ? '1' : undefined} onClick={() => toggleTable(t)} disabled={full}
+                          style={{ '--c': Math.floor((t - 1) / 10) + ((t - 1) % 10) }}
+                          title={done ? '已比賽（連按兩次可解除）' : undefined}
+                          className={`relative h-14 border-4 border-black font-black text-2xl transition-all ${done ? (armed ? 'bg-[#e11d48] text-white' : 'bg-gray-200 text-gray-600') : on ? `${SEL_ON} shadow-[4px_4px_0px_#000] -translate-y-0.5` : full ? 'bg-white/60 text-gray-400 cursor-not-allowed' : `bg-white text-black ${SEL_HOVER} shadow-[2px_2px_0px_#000]`}`}>
+                          {armed ? <span className="text-sm">再按解除</span> : pad2(t)}
+                          {done && !armed && (
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-80" viewBox="0 0 100 100" preserveAspectRatio="none">
+                              <line x1="12" y1="12" x2="88" y2="88" stroke="#e11d48" strokeWidth="3.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                              <line x1="88" y1="12" x2="12" y2="88" stroke="#e11d48" strokeWidth="3.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* 已選桌號直接看上方表格（黃色），這裡只放操作按鈕 */}
+                <div className="bg-white border-t-4 border-black px-5 py-4 flex items-center justify-end">
+                  <div className="flex gap-2 items-center shrink-0">
+                    <button data-testid="open-settings" onClick={() => setShowSettings(true)} className={`${ghostBtn} !px-4 whitespace-nowrap`}>遊戲設定</button>
+                    <button data-testid="open-history" onClick={() => setShowHistory(true)} title="查看目前成績" className={`${ghostBtn} !px-4 inline-flex items-center gap-1.5 whitespace-nowrap`}>
+                      查看成績
+                    </button>
+                    {raced.length > 0 && (
+                      <ConfirmButton onConfirm={resetRaced} confirmText="再按確認" title="重置參賽紀錄" className={`${dangerBtn} !px-4 inline-flex items-center gap-1.5 whitespace-nowrap min-w-[6.5em] justify-center`}>
+                        重置紀錄
+                      </ConfirmButton>
+                    )}
+                    <button onClick={() => setView('home')} className={`${ghostBtn} !px-4 whitespace-nowrap`}>返回</button>
+                    <button onClick={() => setSelected([])} className={`${ghostBtn} !px-4 whitespace-nowrap`}>清除</button>
+                  </div>
+                </div>
+              </RetroWindow>
+              <button onClick={createRoom} disabled={!canCreate || busy || !user} className={`mt-8 ${bigBtn(canCreate && !busy && !!user)}`}>
+                {busy ? '建立中...' : canCreate ? `建立房間（${selected.length} 組）` : `至少選 ${MIN_TEAMS} 組`}
+              </button>
+            </FitStage>
+          )}
+
+          {/* ===== 房間等待畫面 ===== */}
+          {view === 'room' && (
+            <FitStage width={1360} fill={!!wide} smooth className={roomExit ? 'room-exit' : ''}>
+              {/* 房間畫面（大廳、倒數、比賽）都不顯示標題，讓賽道畫面放大 */}
+              <div className={`race-title ${room ? 'is-hidden' : ''}`}><div><TitleBlock /></div></div>
+              {!room ? (
+                <div className="text-[#1e3a8a] font-black text-2xl animate-pulse">讀取房間中...</div>
+              ) : (
+                <div className={`w-full flex gap-6 items-stretch z-10 ${wide ? '' : 'max-w-7xl'}`}>
+                  {/* 左：房號 + QR Code */}
+                  {status !== 'lobby' ? (
+                    <div className="w-80 shrink-0 bg-[#facc15] border-4 border-black rounded-xl shadow-[12px_12px_0px_#000] p-5 flex flex-col items-center">
+                      <div className="flex items-center gap-2">
+                        <div className="font-black text-black text-xl">{{ countdown: '準備起飛', racing: '比賽進行中', finished: '比賽結束', aborted: '比賽已中止' }[status]}</div>
+                        <div data-testid="race-mode" className="bg-black text-[#facc15] font-black text-sm px-2 py-0.5">{modeName(mode)}</div>
+                      </div>
+                      <div className="mt-4 font-hud font-bold text-black/70 tracking-[0.3em] text-sm">TIME LEFT</div>
+                      <div data-testid="race-timer" className={`font-latin text-[120px] leading-none mt-1 ${status === 'racing' && win && win.end - now <= 5000 ? 'text-[#e11d48] animate-pulse' : 'text-black'}`}>
+                        {(() => {
+                          if (!win) return '30';
+                          if (status === 'countdown') return String(duration);
+                          if (status === 'racing') return String(Math.max(0, Math.ceil((win.end - now) / 1000))).padStart(2, '0');
+                          return '00';
+                        })()}
+                      </div>
+                      <div className="font-hud font-bold text-black tracking-[0.2em] text-sm">SEC</div>
+                      <div className="w-full h-1 bg-black my-6"></div>
+                      <div className="font-black text-black text-lg">目標分數</div>
+                      <div data-testid="race-target" className="font-latin text-6xl text-black">{target}</div>
+                      {/* 障礙物紀錄：最新的在最上面 */}
+                      {/* 固定高度（剛好放 5 筆），倒數、比賽、結算時都保留這塊空間，視窗高度不會被撐開 */}
+                      {wide !== 'b' && status !== 'lobby' && mode === 'shake' && (
+                        <div data-testid="shake-hint" className="w-full mt-4 mb-3 flex flex-col items-center justify-center gap-2 bg-white border-4 border-black shrink-0 text-black" style={{ height: HAZ_FEED_H - 12 }}>
+                          <svg className="shake-phone" width="44" height="64" viewBox="0 0 44 64" aria-hidden="true"><rect x="3" y="3" width="38" height="58" rx="7" fill="#facc15" stroke="#000" strokeWidth="4"/><rect x="9" y="11" width="26" height="36" fill="#38bdf8" stroke="#000" strokeWidth="3"/><circle cx="22" cy="53" r="3" fill="#000"/></svg>
+                          <div className="font-black text-lg">搖晃手機衝刺！</div>
+                          <div className="font-bold text-sm text-black/60">每搖一下 +10 分</div>
+                        </div>
+                      )}
+                      {wide !== 'b' && status !== 'lobby' && mode !== 'shake' && (
+                        <div data-testid="hazard-feed" className="w-full mt-4 flex flex-col gap-1.5 overflow-hidden shrink-0" style={{ height: HAZ_FEED_H }}>
+                          <div className="font-black text-black text-sm border-b-4 border-black h-[22px] leading-[18px] shrink-0">障礙物紀錄</div>
+                          {hazFeed.map(ev => (
+                            <div key={ev.id} data-hazard-item={ev.type} className="hz-item flex items-center gap-1.5 bg-white border-[3px] border-black px-2 h-8 shrink-0 font-black text-sm text-black">
+                              <span>#{pad2(ev.table)}</span>
+                              <span className="hz-ico w-6 h-6 shrink-0" dangerouslySetInnerHTML={{ __html: HAZARD_INFO[ev.type].svg }} />
+                              <span>{HAZARD_INFO[ev.type].name}</span>
+                              <span className={`ml-auto ${ev.type === 'ice' ? 'text-[#7e22ce]' : 'text-[#e11d48]'}`}>{ev.type === 'ice' ? '暈 1 秒' : HAZARD_INFO[ev.type].pts}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-auto w-full bg-black text-[#facc15] font-mono font-black text-center py-2 border-4 border-black">ROOM {roomCode}</div>
+                    </div>
+                  ) : (
+                  <div className="w-80 shrink-0 bg-[#facc15] border-4 border-black rounded-xl shadow-[12px_12px_0px_#000] p-5 flex flex-col items-center">
+                    <div className="font-black text-black text-xl mb-1">房間編號</div>
+                    <div data-testid="room-code" className="bg-black text-[#facc15] font-mono font-black text-5xl tracking-[0.2em] pl-[0.2em] px-3 py-2 border-4 border-black mb-5">{roomCode}</div>
+                    <QRCodeBox text={playerUrl(roomCode)} />
+                    <p className="mt-5 font-black text-black text-center leading-snug">手機掃描 QR Code<br />或輸入房間編號加入</p>
+                    <div data-testid="lobby-mode" className="mt-3 bg-black text-[#facc15] font-black px-3 py-1">模式：{modeName(mode)}</div>
+                    <div className="mt-auto pt-5 w-full space-y-1 text-sm font-bold text-black">
+                      <div className="flex items-center gap-2"><TrafficLight light="red" /> 尚無玩家</div>
+                      <div className="flex items-center gap-2"><TrafficLight light="yellow" /> 等待全員準備</div>
+                      <div className="flex items-center gap-2"><TrafficLight light="green" /> 準備完成</div>
+                    </div>
+                  </div>
+                  )}
+
+                  {/* 右：十台賽車 */}
+                  <RetroWindow title="TSRC_PLANE.exe" right={serverBadge} className="flex-1">
+                    <div className="sky-field p-6 relative flex-1 overflow-hidden">
+                      {/* 天空背景：雲朵＋右側方格終點門 */}
+                      <SkyClouds />
+                      <div className="sky-gate"></div>
+
+                      {/* 倒數與比賽中：賽道區固定保留十隊的高度，不論幾隊畫面大小都一致 */}
+                      <div className="race-lanes relative z-10 flex flex-col gap-[14px] -ml-[14px]" style={{ minHeight: room ? RACE_LANES_MIN_H : 0 }}>
+                        {(room.tables || []).map(t => {
+                          const st = teamStatus(room, t);
+                          const color = colorHex(room.teams?.[teamKey(t)]?.color);
+                          const inRace = status !== 'lobby';
+                          const score = status === 'finished' || status === 'aborted' ? (room.teamScores?.[teamKey(t)] ?? sums[t] ?? 0) : (sums[t] || 0);
+                          const val = inRace ? Math.min((score / target) * 100, 100) : 0;
+                          return (
+                            <div key={t} data-lane={t} className="flex items-center gap-2">
+                              <div className="w-16 h-10 bg-[#facc15] border-4 border-black rounded flex items-center justify-center shadow-[3px_3px_0px_#000] z-20 shrink-0">
+                                <span className="font-black text-xl text-black">#{pad2(t)}</span>
+                              </div>
+                              <TrafficLight light={st.light} />
+                              <div className="flex-1 ml-[10px] mr-[70px] h-10 sky-lane relative">
+                                {/* 雲跡：使用隊長選的飛機顏色，從起點拉到機尾 */}
+                                {inRace && <div className="sky-trail transition-all duration-300 ease-out" style={{ width: `max(0px, calc(${val}% - 8px))`, background: color }}></div>}
+                                {/* 分數標籤：比賽中跟在機尾後面（剛起飛時放在機頭前面）*/}
+                                <div data-lane-text={t} className={`absolute top-1/2 -translate-y-1/2 font-black text-black whitespace-nowrap ${inRace ? 'sky-score text-lg transition-all duration-300 ease-out' : 'left-[120px] text-sm'}`}
+                                  style={inRace ? (val < 14 ? { left: `calc(${val}% + 74px)` } : { right: `calc(${100 - val}% + 30px)` }) : undefined}>
+                                  {inRace ? `${score} 分` : st.count === 0 ? '等待加入...' : `${st.count} 人・已準備 ${st.ready}/${st.count}`}
+                                </div>
+                                {/* 踩到障礙物：車頭上方彈出貼紙＋扣分 */}
+                                {hazFx.filter(ev => ev.table === t).map(ev => (
+                                  <div key={ev.id} data-hazard-pop={ev.type} className="hz-pop" style={{ left: `calc(${val}% + 22px)` }}>
+                                    <span className="hz-ico w-[46px] h-[46px]" dangerouslySetInnerHTML={{ __html: HAZARD_INFO[ev.type].svg }} />
+                                    <b>{HAZARD_INFO[ev.type].pts}</b>
+                                  </div>
+                                ))}
+                                {/* 冰凍：一整塊冰把整條進度條（含賽車）封住，FROZEN! 在冰塊正中間 */}
+                                {frozenLanes[t] && (
+                                  <div key={frozenLanes[t].id} data-frozen-lane={t} className="ice-block">
+                                    <span className="ice-text">TURBULENCE!</span>
+                                  </div>
+                                )}
+                                {/* 比賽進行中、還沒到終點的車子輪子會轉動 */}
+                                <div className={`absolute top-1/2 -translate-y-1/2 z-30 transition-all duration-300 ease-out ${status === 'racing' && val < 100 ? 'race-wheels' : ''} ${frozenLanes[t] ? 'car-frozen' : ''}`} style={{ left: `calc(${val}% - 23px)`, width: '90px', height: '52px' }}>
+                                  <F1CarSVG color={color} />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </RetroWindow>
+
+                  {/* 寬版 B：右側欄（大廳＝人數統計＋按鈕；比賽＝障礙物紀錄＋緊急中止）*/}
+                  {wide === 'b' && (
+                    <div data-testid="wide-side" className="w-72 shrink-0 flex flex-col gap-5">
+                      {status === 'lobby' ? (() => {
+                        const sts = (room.tables || []).map(t => teamStatus(room, t));
+                        const people = sts.reduce((a, x) => a + x.count, 0);
+                        const greens = sts.filter(x => x.light === 'green').length;
+                        return (
+                          <>
+                            <div className="flex-1 bg-white border-4 border-black rounded-xl shadow-[8px_8px_0px_#000] p-5 flex flex-col">
+                              <div className="font-black text-black text-xl">報名狀況</div>
+                              <div className="mt-4 font-bold text-black/60 text-sm">已加入機師</div>
+                              <div className="font-latin text-6xl text-black leading-none">{people}<span className="text-2xl ml-2 font-black">人</span></div>
+                              <div className="mt-5 font-bold text-black/60 text-sm">準備完成</div>
+                              <div className="font-latin text-6xl text-black leading-none">{greens}<span className="text-3xl text-black/40"> / {sts.length}</span><span className="text-2xl ml-2 font-black">組</span></div>
+                              <div className="mt-auto font-bold text-black/60 text-sm leading-snug">全部綠燈後即可開始比賽</div>
+                            </div>
+                            <button onClick={startRace} disabled={!allGreen || !connected} data-testid="start-race" className={`${bigBtn(allGreen && connected)} !w-full !px-4 justify-center`}>
+                              {allGreen ? '開始比賽' : '等待全部綠燈'}
+                            </button>
+                            <ConfirmButton onConfirm={() => closeRoom('setup', true)} confirmText="再按一次確認取消" className={`${dangerBtn} w-full`}>取消房間・回到選桌</ConfirmButton>
+                          </>
+                        );
+                      })() : (
+                        <>
+                          <div className="flex-1 bg-[#facc15] border-4 border-black rounded-xl shadow-[8px_8px_0px_#000] p-5 flex flex-col overflow-hidden">
+                            {mode === 'shake' ? (
+                              <div data-testid="shake-hint" className="flex-1 flex flex-col items-center justify-center gap-3 bg-white border-4 border-black text-black">
+                                <svg className="shake-phone" width="56" height="82" viewBox="0 0 44 64" aria-hidden="true"><rect x="3" y="3" width="38" height="58" rx="7" fill="#facc15" stroke="#000" strokeWidth="4"/><rect x="9" y="11" width="26" height="36" fill="#38bdf8" stroke="#000" strokeWidth="3"/><circle cx="22" cy="53" r="3" fill="#000"/></svg>
+                                <div className="font-black text-xl">搖晃手機衝刺！</div>
+                                <div className="font-bold text-black/60">每搖一下 +10 分</div>
+                              </div>
+                            ) : (
+                              <div data-testid="hazard-feed" className="flex flex-col gap-1.5 overflow-hidden">
+                                <div className="font-black text-black text-lg border-b-4 border-black pb-1 mb-1 shrink-0">障礙物紀錄</div>
+                                {hazFeed.map(ev => (
+                                  <div key={ev.id} data-hazard-item={ev.type} className="hz-item flex items-center gap-1.5 bg-white border-[3px] border-black px-2 h-9 shrink-0 font-black text-base text-black">
+                                    <span>#{pad2(ev.table)}</span>
+                                    <span className="hz-ico w-7 h-7 shrink-0" dangerouslySetInnerHTML={{ __html: HAZARD_INFO[ev.type].svg }} />
+                                    <span>{HAZARD_INFO[ev.type].name}</span>
+                                    <span className={`ml-auto ${ev.type === 'ice' ? 'text-[#7e22ce]' : 'text-[#e11d48]'}`}>{ev.type === 'ice' ? '暈 1 秒' : HAZARD_INFO[ev.type].pts}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {(status === 'countdown' || status === 'racing') && (
+                            <ConfirmButton onConfirm={abortRace} confirmText="再按一次確認中止" className={`${dangerBtn} w-full`}>緊急中止比賽</ConfirmButton>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {wide !== 'b' && room && status === 'lobby' && (
+                <div className="mt-8 flex items-center gap-6 z-10">
+                  <ConfirmButton onConfirm={() => closeRoom('setup', true)} confirmText="再按一次確認取消" className={dangerBtn}>取消房間・回到選桌</ConfirmButton>
+                  <button onClick={startRace} disabled={!allGreen || !connected} data-testid="start-race" className={bigBtn(allGreen && connected)}>
+                    {allGreen ? '開始比賽' : '全部綠燈後開放開始'}
+                  </button>
+                </div>
+              )}
+              {wide !== 'b' && room && (status === 'countdown' || status === 'racing') && (
+                <div className="mt-8 flex items-center gap-6 z-10">
+                  <ConfirmButton onConfirm={abortRace} confirmText="再按一次確認中止" className={dangerBtn}>緊急中止比賽</ConfirmButton>
+                </div>
+              )}
+            </FitStage>
+          )}
+
+          {showHistory && <ScoreHistory history={history} onClose={() => setShowHistory(false)} onClear={clearHistory} onRestore={restoreHistory} />}
+          {showSettings && <GameSettings settings={settings} onChange={changeSettings} onClose={() => setShowSettings(false)} wide={!!wide} />}
+
+          {/* 3、2、1、GO 倒數 */}
+          {view === 'room' && win && (status === 'countdown' || (status === 'racing' && now < win.start + 1000)) && (() => {
+            const left = win.start - now;
+            const label = left > 0 ? String(Math.min(3, Math.ceil(left / 1000))) : 'GO!';
+            return (
+              <div className="absolute inset-0 z-50 bg-black/45 flex items-center justify-center pointer-events-none">
+                <div key={label} data-testid="countdown" className={`count-pop font-latin leading-none ${label === 'GO!' ? 'text-[#22c55e]' : 'text-white'}`}
+                  style={{ fontSize: 'min(34vw, 60vh)', WebkitTextStroke: '0.02em #000' }}>{label}</div>
+              </div>
+            );
+          })()}
+
+          {/* 比賽結束／中止（完整排名於第五階段加入）*/}
+          {view === 'room' && room && (status === 'finished' || status === 'aborted') && (() => {
+            const ranking = room.result?.ranking || [];
+            const top = ranking.filter(r => r.rank === 1 && r.score > 0);
+            const aborted = status === 'aborted';
+            return (
+              <div className={`absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${roomExit ? 'room-exit' : ''}`}>
+                <div data-testid="result-card" className="bg-[#facc15] border-8 border-black p-10 max-w-2xl w-full text-center shadow-[16px_16px_0px_#e11d48]">
+                  {aborted ? (
+                    <h2 className="font-winner text-7xl text-black mb-4">STOPPED</h2>
+                  ) : (
+                    <>
+                      <div className="flex justify-center mb-4"><TrophyIcon /></div>
+                      <h2 className="font-winner text-8xl text-black mb-4">WINNER!</h2>
+                    </>
+                  )}
+                  <div className="inline-block bg-black text-white font-black px-4 py-1 mb-5">結束原因：{endReasonText(room.meta?.endReason, roomTarget(room.meta), roomDuration(room.meta)) || '—'}</div>
+                  {!aborted && (
+                    <div className="bg-white border-4 border-black p-4 mb-6 shadow-[6px_6px_0px_#000]">
+                      {top.length ? (
+                        <p className="text-4xl font-black text-black">第 <span className="text-[#e11d48] text-6xl">{top.map(r => pad2(r.table)).join('、')}</span> 桌{top.length > 1 ? '（並列）' : ''}<span className="block text-2xl mt-2">{top[0].score} 分</span></p>
+                      ) : <p className="text-3xl font-black text-black">本場無人得分</p>}
+                    </div>
+                  )}
+                  <div className="flex justify-center gap-4">
+                    <ConfirmButton onConfirm={resetRace} confirmText="再按一次確認重賽" className={ghostBtn} armedClass={BTN_ARMED_NEUTRAL}>同組重新比賽</ConfirmButton>
+                    <ConfirmButton onConfirm={() => closeRoom('setup')} confirmText="再按一次確認結束" className={dangerBtn}>結束本場・選擇下一輪</ConfirmButton>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
